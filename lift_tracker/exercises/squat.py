@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import List, Optional, Tuple
+from typing import List, Literal, Optional, Tuple
 
 from lift_tracker.exercises.base import Exercise, ExerciseResult, blend_visibility
 from lift_tracker.geometry import angle_degrees
@@ -28,27 +28,29 @@ class _ConcentricSubphase(Enum):
 
 @dataclass
 class SquatConfig:
-    # Knee angle (hip–knee–ankle): ~180 extended, smaller when flexed.
-    standing_angle_min_deg: float = 155.0
-    bottom_angle_max_deg: float = 105.0
-    min_vis: float = 0.45
-    # Require depth before counting a rep (avoid partial ROM).
+    standing_angle_min_deg: float = 145.0
+    bottom_angle_max_deg: float = 100.0
+    min_vis: float = 0.20
     require_depth: bool = True
-    # Smoothing on knee angle (0–1), higher = smoother.
+    depth_slack_deg: float = 15.0
+    min_knee_flexion_for_rep_deg: float = 35.0
+
+    min_rep_eccentric_duration_s: float = 0.0
+    min_rep_concentric_duration_s: float = 0.0
+    knee_vy_ema_alpha: float = 0.25
+    knee_vy_px_s_threshold: float = 9999.0
+
+    dsm_down_threshold_deg_s: float = -8.0
+    dsm_up_threshold_deg_s: float = 8.0
+
     angle_ema_alpha: float = 0.35
-    # Rep counting debounce: min seconds between consecutive reps.
-    min_rep_interval_s: float = 0.45
-    # Heuristic: if one concentric half is this much slower (by mean knee extension speed) vs the other, emit hint.
+    min_rep_interval_s: float = 0.95
+    leg_selection: Literal["side_profile", "blend"] = "side_profile"
     imbalance_ratio: float = 1.45
-    min_mean_speed_deg_s: float = 25.0  # ignore noise when nearly static
+    min_mean_speed_deg_s: float = 25.0
 
 
 class SquatExercise(Exercise):
-    """
-    Squat tracking: reps, eccentric/concentric durations, and simple concentric-half imbalance
-    (interpreted as glute vs quad emphasis — heuristic, not medical diagnosis).
-    """
-
     id = "squat"
 
     def __init__(self, config: Optional[SquatConfig] = None) -> None:
@@ -69,7 +71,6 @@ class SquatExercise(Exercise):
         self._eccentric_duration_s: Optional[float] = None
         self._concentric_duration_s: Optional[float] = None
         self._last_rep_speeds: Optional[Tuple[float, float, float, float]] = None
-        # Concentric half timing / speed
         self._ch_start_t: Optional[float] = None
         self._concentric_start_t: Optional[float] = None
         self._ch_split_t: Optional[float] = None
@@ -79,7 +80,6 @@ class SquatExercise(Exercise):
         self._n_bottom: int = 0
         self._n_top: int = 0
         self._mid_angle: Optional[float] = None
-        # Rolling history for imbalance (last N reps)
         self._hist_bottom_slow: List[float] = []
         self._hist_top_slow: List[float] = []
         self._hist_window = 5
@@ -87,9 +87,13 @@ class SquatExercise(Exercise):
         self._eccentric_start_angle = None
         self._last_rep_eccentric_mean_deg_s = None
         self._last_rep_concentric_mean_deg_s = None
+        self._last_rep_duration_s: Optional[float] = None
+
+        # --- NEW TRACKERS FOR AVERAGES ---
+        self._rep_durations: List[float] = []
+        self._rep_depths: List[float] = []
 
     def _depth_percent(self, knee_angle_deg: float) -> float:
-        """0 = upright, 100 = at/ past configured bottom (hip–knee–ankle)."""
         stand = float(self.cfg.standing_angle_min_deg)
         deep = float(self.cfg.bottom_angle_max_deg)
         span = max(1e-6, stand - deep)
@@ -98,12 +102,8 @@ class SquatExercise(Exercise):
     def _knee_angle(self, lm: LandmarkFrame) -> Tuple[Optional[float], bool]:
         pl = PoseLandmark
         idx = [
-            pl.LEFT_HIP,
-            pl.LEFT_KNEE,
-            pl.LEFT_ANKLE,
-            pl.RIGHT_HIP,
-            pl.RIGHT_KNEE,
-            pl.RIGHT_ANKLE,
+            pl.LEFT_HIP, pl.LEFT_KNEE, pl.LEFT_ANKLE,
+            pl.RIGHT_HIP, pl.RIGHT_KNEE, pl.RIGHT_ANKLE,
         ]
         if not lm.confident(idx, self.cfg.min_vis):
             return None, False
@@ -121,13 +121,7 @@ class SquatExercise(Exercise):
             return None, False
         return float(a), vis_ok
 
-    def _update_phase(
-        self,
-        t: float,
-        ang: float,
-        dang_dt: float,
-    ) -> None:
-        """Finite-state squat phase (coarse)."""
+    def _update_phase(self, t: float, ang: float, dang_dt: float) -> None:
         stand = self.cfg.standing_angle_min_deg
         deep = self.cfg.bottom_angle_max_deg
 
@@ -147,7 +141,6 @@ class SquatExercise(Exercise):
                 if self._descent_start_t is not None:
                     self._eccentric_duration_s = max(0.0, t - self._descent_start_t)
             elif ang >= stand - 5.0 and dang_dt > 8.0:
-                # stood up without hitting depth
                 self._phase = SquatPhase.STANDING
                 self._clear_rep_timers()
         elif self._phase == SquatPhase.BOTTOM:
@@ -158,11 +151,11 @@ class SquatExercise(Exercise):
         elif self._phase == SquatPhase.CONCENTRIC:
             if ang >= stand - 4.0:
                 had_depth = self._bottom_angle is not None and self._bottom_angle <= self.cfg.bottom_angle_max_deg + 15.0
+                ba = self._bottom_angle  # Save before finishing concentric clears it
                 self._phase = SquatPhase.STANDING
                 self._finish_concentric(t, ang)
-                self._try_count_rep(t, had_depth)
+                self._try_count_rep(t, had_depth, ba)
             elif ang < deep + 10.0 and dang_dt < -5.0:
-                # lost balance / going down again
                 self._phase = SquatPhase.ECCENTRIC
                 self._abort_concentric()
                 self._descent_start_t = t
@@ -199,12 +192,16 @@ class SquatExercise(Exercise):
         self._mid_angle = None
 
     def _finish_concentric(self, t: float, final_angle: float) -> None:
+        if self._descent_start_t is not None:
+            self._last_rep_duration_s = max(0.0, t - self._descent_start_t)
+
         start = self._concentric_start_t if self._concentric_start_t is not None else self._bottom_t
         if start is not None:
             self._concentric_duration_s = max(0.0, t - start)
+
         if self._ch_start_t is not None:
             self._ch_end_t = t
-        # compute mean speeds
+
         v_b = self._sum_speed_bottom / self._n_bottom if self._n_bottom else 0.0
         v_t = self._sum_speed_top / self._n_top if self._n_top else 0.0
         e = self._eccentric_duration_s
@@ -212,12 +209,15 @@ class SquatExercise(Exercise):
         self._last_rep_speeds = (e or 0.0, c or 0.0, v_b, v_t)
         ea = self._eccentric_start_angle
         ba = self._bottom_angle
+
         self._last_rep_eccentric_mean_deg_s = None
         self._last_rep_concentric_mean_deg_s = None
+
         if ea is not None and ba is not None and e and e > 1e-6:
             self._last_rep_eccentric_mean_deg_s = max(0.0, (ea - ba) / e)
         if ba is not None and c and c > 1e-6:
             self._last_rep_concentric_mean_deg_s = max(0.0, (final_angle - ba) / c)
+
         self._update_fatigue_history(v_b, v_t)
         self._abort_concentric()
         self._descent_start_t = None
@@ -226,7 +226,6 @@ class SquatExercise(Exercise):
         self._eccentric_start_angle = None
 
     def _update_fatigue_history(self, v_bottom_half: float, v_top_half: float) -> None:
-        # Store "slowness" as inverse speed (higher = more struggle if speed is low)
         eps = 1e-3
         self._hist_bottom_slow.append(1.0 / max(v_bottom_half, eps))
         self._hist_top_slow.append(1.0 / max(v_top_half, eps))
@@ -234,20 +233,27 @@ class SquatExercise(Exercise):
             self._hist_bottom_slow.pop(0)
             self._hist_top_slow.pop(0)
 
-    def _try_count_rep(self, t: float, had_depth: bool) -> None:
+    def _try_count_rep(self, t: float, had_depth: bool, bottom_angle: Optional[float] = None) -> None:
         if t - self._last_rep_end_t < self.cfg.min_rep_interval_s:
             return
         if self.cfg.require_depth and not had_depth:
             return
+
         self._rep_count += 1
         self._last_rep_end_t = t
+
+        # --- NEW: Append to averages only on successful rep count ---
+        if getattr(self, "_last_rep_duration_s", None) is not None:
+            self._rep_durations.append(self._last_rep_duration_s)
+        if bottom_angle is not None:
+            self._rep_depths.append(self._depth_percent(bottom_angle))
 
     def _track_concentric_halves(self, t: float, ang: float, dang_dt: float) -> None:
         if self._phase != SquatPhase.CONCENTRIC or self._conc_sub == _ConcentricSubphase.NONE:
             return
         if self._mid_angle is None or self._bottom_angle is None:
             return
-        # Knee extension: angle increases when standing up from squat.
+
         ext_speed = max(0.0, dang_dt)
         if self._conc_sub == _ConcentricSubphase.BOTTOM_HALF:
             if ang >= self._mid_angle:
@@ -263,10 +269,6 @@ class SquatExercise(Exercise):
                 self._n_top += 1
 
     def _fatigue_hints(self) -> Tuple[Optional[str], Optional[str], dict]:
-        """
-        Returns (primary_hint, secondary_hint, debug dict).
-        Heuristic: compare mean knee extension speed in bottom vs top half of concentric.
-        """
         if self._last_rep_speeds is None:
             return None, None, {}
         _, _, v_b, v_t = self._last_rep_speeds
@@ -280,15 +282,13 @@ class SquatExercise(Exercise):
         if v_b * r < v_t:
             return (
                 "bottom_half_concentric_slower",
-                "Often associated with needing more posterior chain / hip extension strength — "
-                "this is a rough heuristic, not a diagnosis.",
+                "Often associated with needing more posterior chain / hip extension strength — this is a rough heuristic, not a diagnosis.",
                 dbg,
             )
         if v_t * r < v_b:
             return (
                 "top_half_concentric_slower",
-                "Often associated with needing more knee extension strength — "
-                "this is a rough heuristic, not a diagnosis.",
+                "Often associated with needing more knee extension strength — this is a rough heuristic, not a diagnosis.",
                 dbg,
             )
         return None, None, dbg
@@ -318,7 +318,6 @@ class SquatExercise(Exercise):
         dsm = (sm - self._prev_smo) / dt
         self._prev_smo = sm
 
-        # Accumulate concentric-half speeds before phase transitions clear sub-state.
         if self._phase == SquatPhase.CONCENTRIC:
             self._track_concentric_halves(t, sm, dsm)
         self._update_phase(t, sm, raw_dang)
@@ -332,32 +331,29 @@ class SquatExercise(Exercise):
             "rep_count": self._rep_count,
             "visible": True,
         }
-        # Live phase speeds (mean knee flexion / extension rate over current phase so far).
-        if self._phase == SquatPhase.ECCENTRIC and self._descent_start_t is not None and self._eccentric_start_angle is not None:
-            dt_e = max(1e-6, t - self._descent_start_t)
-            metrics["live_eccentric_deg_s"] = round(max(0.0, (self._eccentric_start_angle - sm) / dt_e), 1)
-        if self._phase == SquatPhase.CONCENTRIC and self._concentric_start_t is not None and self._bottom_angle is not None:
-            dt_c = max(1e-6, t - self._concentric_start_t)
-            metrics["live_concentric_deg_s"] = round(max(0.0, (sm - self._bottom_angle) / dt_c), 1)
 
-        if self._eccentric_duration_s is not None:
-            metrics["last_eccentric_duration_s"] = round(self._eccentric_duration_s, 3)
-        if self._concentric_duration_s is not None:
-            metrics["last_concentric_duration_s"] = round(self._concentric_duration_s, 3)
-        if self._last_rep_eccentric_mean_deg_s is not None:
-            metrics["last_rep_eccentric_mean_deg_s"] = round(self._last_rep_eccentric_mean_deg_s, 1)
-        if self._last_rep_concentric_mean_deg_s is not None:
-            metrics["last_rep_concentric_mean_deg_s"] = round(self._last_rep_concentric_mean_deg_s, 1)
+        # Shows a running stopwatch while actively squatting
+        if self._phase in (SquatPhase.ECCENTRIC, SquatPhase.BOTTOM, SquatPhase.CONCENTRIC) and self._descent_start_t is not None:
+            metrics["live_rep_duration_s"] = round(max(0.0, t - self._descent_start_t), 1)
+
+        # Outputs the final combined time of the completed rep
+        if getattr(self, "_last_rep_duration_s", None) is not None:
+            metrics["last_rep_duration_s"] = round(self._last_rep_duration_s, 2)
+
+        # --- NEW AVERAGE METRICS ---
+        if self._rep_durations:
+            metrics["average_rep_duration_s"] = round(sum(self._rep_durations) / len(self._rep_durations), 2)
+        if self._rep_depths:
+            metrics["average_depth_percent"] = round(sum(self._rep_depths) / len(self._rep_depths), 1)
+
+        # Include internal fatigue data
         if self._last_rep_speeds is not None:
-            e, c, vb, vt = self._last_rep_speeds
-            metrics.update(
-                {
-                    "last_rep_eccentric_duration_s": round(e, 3),
-                    "last_rep_concentric_duration_s": round(c, 3),
-                    "last_rep_mean_knee_extension_speed_bottom_half_deg_s": round(vb, 2),
-                    "last_rep_mean_knee_extension_speed_top_half_deg_s": round(vt, 2),
-                }
-            )
+            _, _, vb, vt = self._last_rep_speeds
+            metrics.update({
+                "last_rep_mean_knee_extension_speed_bottom_half_deg_s": round(vb, 2),
+                "last_rep_mean_knee_extension_speed_top_half_deg_s": round(vt, 2),
+            })
+
         metrics.update(dbg)
 
         hints = {}
