@@ -1,7 +1,10 @@
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox
 import cv2
 import time
+import json
+import os
+from datetime import datetime
 
 from lift_tracker.exercises.squat import SquatExercise
 from lift_tracker.exercises.bicep_curl import BicepCurlExercise
@@ -14,17 +17,14 @@ class FormLogicUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Form-Logic Tracker")
-        self.root.geometry("450x250")
+        self.root.geometry("450x300")
         self.root.configure(padx=20, pady=20)
 
-        # Main Title
-        title = tk.Label(root, text="Form-Logic", font=("Helvetica", 20, "bold"))
+        title = tk.Label(root, text="Form-Logic", font=("Helvetica", 24, "bold"))
         title.pack(pady=(0, 10))
 
-        # Dropdown Label
         tk.Label(root, text="Select an Exercise:", font=("Helvetica", 12)).pack()
 
-        # Exercise Dropdown
         self.exercise_var = tk.StringVar()
         self.dropdown = ttk.Combobox(
             root,
@@ -34,96 +34,106 @@ class FormLogicUI:
             width=30,
             font=("Helvetica", 12)
         )
-        self.dropdown.current(0)  # Default to Squat
+        self.dropdown.current(0)
         self.dropdown.pack(pady=10)
 
-        # Start Button
-        self.start_btn = ttk.Button(root, text="Start Tracker", command=self.start_tracker)
-        self.start_btn.pack(pady=20)
+        self.start_btn = ttk.Button(root, text="Start Workout", command=self.start_tracker)
+        self.start_btn.pack(pady=10)
+
+        # New History Button for later!
+        self.history_btn = ttk.Button(root, text="View History", command=self.view_history_stub)
+        self.history_btn.pack(pady=5)
 
     def start_tracker(self):
         selection = self.exercise_var.get()
-
-        if "Squat" in selection:
-            active_exercise = SquatExercise()
-        elif "Bicep Curl" in selection:
-            active_exercise = BicepCurlExercise()
-        elif "Pull-up" in selection:
-            active_exercise = PullUpExercise()
-        else:
-            return
-
+        if "Squat" in selection: active_exercise = SquatExercise()
+        elif "Bicep Curl" in selection: active_exercise = BicepCurlExercise()
+        elif "Pull-up" in selection: active_exercise = PullUpExercise()
+        else: return
         self.run_webcam_loop(active_exercise)
 
     def run_webcam_loop(self, exercise_module):
         self.root.withdraw()
-
         cap = cv2.VideoCapture(0)
         pipe = TrackingPipeline(exercise_module)
 
-        # --- 5 SECOND COUNTDOWN LOGIC ---
+        # 5-second countdown
         start_time = time.time()
-        countdown_duration = 5
-
         while True:
             ok, frame = cap.read()
             if not ok: break
-
-            elapsed = time.time() - start_time
-            remaining = int(countdown_duration - elapsed) + 1
-
-            if remaining <= 0:
-                break
-
+            remaining = int(5 - (time.time() - start_time)) + 1
+            if remaining <= 0: break
             display = frame.copy()
             h, w, _ = display.shape
-
-            # Draw big centered text
-            text = str(remaining)
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            font_scale = 5
-            thickness = 10
-            text_size = cv2.getTextSize(text, font, font_scale, thickness)[0]
-
-            text_x = (w - text_size[0]) // 2
-            text_y = (h + text_size[1]) // 2
-
-            # Outline for visibility
-            cv2.putText(display, text, (text_x, text_y), font, font_scale, (0, 0, 0), thickness + 5, cv2.LINE_AA)
-            # Actual White Text
-            cv2.putText(display, text, (text_x, text_y), font, font_scale, (255, 255, 255), thickness, cv2.LINE_AA)
-
+            cv2.putText(display, str(remaining), (w//2-50, h//2+50), cv2.FONT_HERSHEY_SIMPLEX, 5, (255, 255, 255), 10, cv2.LINE_AA)
             cv2.imshow("Form-Logic (Press 'Q' to Exit)", display)
             if cv2.waitKey(1) & 0xFF == ord("q"):
-                cap.release()
-                cv2.destroyAllWindows()
-                self.root.deiconify()
-                return
+                cap.release(); cv2.destroyAllWindows(); self.root.deiconify(); return
 
-        # --- ACTIVE TRACKING LOOP ---
+        # Active Tracking
         try:
             while cap.isOpened():
                 ok, frame = cap.read()
-                if not ok:
-                    break
-
+                if not ok: break
                 packet = pipe.process_bgr(frame)
                 display = frame.copy()
-
-                if packet.landmarks is not None:
-                    draw_pose_skeleton(display, packet.landmarks)
-
+                if packet.landmarks is not None: draw_pose_skeleton(display, packet.landmarks)
                 draw_squat_hud(display, packet.exercise.metrics)
-
                 cv2.imshow("Form-Logic (Press 'Q' to Exit)", display)
-
-                if cv2.waitKey(1) & 0xFF == ord("q"):
-                    break
+                if cv2.waitKey(1) & 0xFF == ord("q"): break
         finally:
+            # --- NEW LOGGING LOGIC ---
+            summary = exercise_module.get_summary()
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            log_entry = {
+                "timestamp": timestamp,
+                "exercise": exercise_module.id,
+                "metrics": summary
+            }
+            self.save_log(log_entry)
+
             cap.release()
             pipe.close()
             cv2.destroyAllWindows()
             self.root.deiconify()
+
+            # Show summary window
+            self.show_summary_window(log_entry)
+
+    def save_log(self, entry):
+        filename = "history.json"
+        history = []
+        if os.path.exists(filename):
+            try:
+                with open(filename, 'r') as f:
+                    history = json.load(f)
+            except: pass
+        history.append(entry)
+        with open(filename, 'w') as f:
+            json.dump(history, f, indent=4)
+
+    def show_summary_window(self, log):
+        summary_win = tk.Toplevel(self.root)
+        summary_win.title("Workout Summary")
+        summary_win.geometry("400x400")
+
+        tk.Label(summary_win, text="Session Summary", font=("Helvetica", 16, "bold")).pack(pady=10)
+        tk.Label(summary_win, text=f"Time: {log['timestamp']}", font=("Helvetica", 10)).pack()
+        tk.Label(summary_win, text=f"Exercise: {log['exercise'].capitalize()}", font=("Helvetica", 12, "bold")).pack(pady=5)
+
+        metrics_frame = tk.Frame(summary_win)
+        metrics_frame.pack(pady=10, padx=20, fill="both")
+
+        for key, value in log['metrics'].items():
+            readable_key = key.replace("_", " ").capitalize()
+            label_text = f"{readable_key}: {value}"
+            tk.Label(metrics_frame, text=label_text, font=("Helvetica", 11)).pack(anchor="w")
+
+        ttk.Button(summary_win, text="Close", command=summary_win.destroy).pack(pady=20)
+
+    def view_history_stub(self):
+        messagebox.showinfo("Coming Soon", "You can view the raw 'history.json' file in your project folder now. Full history UI coming in the next update!")
 
 if __name__ == "__main__":
     root = tk.Tk()

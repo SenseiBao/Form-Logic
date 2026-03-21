@@ -1,0 +1,12 @@
+[
+    {
+        "timestamp": "2026-03-21 16:37:31",
+        "exercise": "squat",
+        "metrics": {
+            "total_reps": 5,
+            "avg_rep_duration_s": 1.09,
+            "avg_depth_pct": 100.0,
+            "avg_max_lean_deg": 35.5
+        }
+    }
+]

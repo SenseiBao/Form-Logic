@@ -38,6 +38,14 @@ class PullUpExercise(Exercise):
         self.cfg = config or PullUpConfig()
         self.reset()
 
+    def get_summary(self) -> Dict[str, Any]:
+            return {
+                "total_reps": self._rep_count,
+                "avg_rep_duration_s": round(sum(self._rep_durations) / len(self._rep_durations), 2) if self._rep_durations else 0,
+                "avg_conc_depth_pct": round(sum(self._rep_conc_depths) / len(self._rep_conc_depths), 1) if self._rep_conc_depths else 0,
+                "avg_ecc_depth_pct": round(sum(self._rep_ecc_depths) / len(self._rep_ecc_depths), 1) if self._rep_ecc_depths else 0,
+            }
+
     def reset(self) -> None:
         self._ema_angle: Optional[float] = None
         self._prev_t: Optional[float] = None

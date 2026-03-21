@@ -266,6 +266,14 @@ class SquatExercise(Exercise):
             self._hist_bottom_slow.pop(0)
             self._hist_top_slow.pop(0)
 
+    def get_summary(self) -> Dict[str, Any]:
+            return {
+                "total_reps": self._rep_count,
+                "avg_rep_duration_s": round(sum(self._rep_durations) / len(self._rep_durations), 2) if self._rep_durations else 0,
+                "avg_depth_pct": round(sum(self._rep_depths) / len(self._rep_depths), 1) if self._rep_depths else 0,
+                "avg_max_lean_deg": round(sum(self._rep_max_leans) / len(self._rep_max_leans), 1) if self._rep_max_leans else 0,
+            }
+
     def _try_count_rep(self, t: float, had_depth: bool, bottom_angle: Optional[float] = None) -> None:
         if t - self._last_rep_end_t < self.cfg.min_rep_interval_s:
             return
