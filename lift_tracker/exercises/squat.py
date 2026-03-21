@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Tuple
 
 from lift_tracker.exercises.base import Exercise, ExerciseResult, blend_visibility
 from lift_tracker.geometry import angle_degrees
@@ -11,19 +11,17 @@ from lift_tracker.pose.landmarks import LandmarkFrame, PoseLandmark
 
 
 class SquatPhase(Enum):
-    """High-level phase for debugging / UI."""
-
     UNKNOWN = auto()
     STANDING = auto()
-    ECCENTRIC = auto()  # descending
+    ECCENTRIC = auto()
     BOTTOM = auto()
-    CONCENTRIC = auto()  # ascending
+    CONCENTRIC = auto()
 
 
 class _ConcentricSubphase(Enum):
     NONE = auto()
-    BOTTOM_HALF = auto()  # from deepest knee flex to mid-ROM
-    TOP_HALF = auto()  # mid-ROM to lockout
+    BOTTOM_HALF = auto()
+    TOP_HALF = auto()
 
 
 @dataclass
@@ -88,8 +86,9 @@ class SquatExercise(Exercise):
         self._last_rep_eccentric_mean_deg_s = None
         self._last_rep_concentric_mean_deg_s = None
         self._last_rep_duration_s: Optional[float] = None
+        self._rep_cycle_start_t: Optional[float] = None
 
-        # --- NEW TRACKERS FOR AVERAGES ---
+        # Arrays to hold the exact metrics per completed rep
         self._rep_durations: List[float] = []
         self._rep_depths: List[float] = []
 
@@ -133,6 +132,7 @@ class SquatExercise(Exercise):
                 if self._descent_start_t is None:
                     self._descent_start_t = t
                     self._eccentric_start_angle = ang
+                self._rep_cycle_start_t = t
         elif self._phase == SquatPhase.ECCENTRIC:
             if ang <= deep + 8.0 and abs(dang_dt) < 40.0:
                 self._phase = SquatPhase.BOTTOM
@@ -151,7 +151,7 @@ class SquatExercise(Exercise):
         elif self._phase == SquatPhase.CONCENTRIC:
             if ang >= stand - 4.0:
                 had_depth = self._bottom_angle is not None and self._bottom_angle <= self.cfg.bottom_angle_max_deg + 15.0
-                ba = self._bottom_angle  # Save before finishing concentric clears it
+                ba = self._bottom_angle
                 self._phase = SquatPhase.STANDING
                 self._finish_concentric(t, ang)
                 self._try_count_rep(t, had_depth, ba)
@@ -168,6 +168,7 @@ class SquatExercise(Exercise):
         self._eccentric_duration_s = None
         self._concentric_duration_s = None
         self._eccentric_start_angle = None
+        self._rep_cycle_start_t = None
         self._abort_concentric()
 
     def _begin_concentric(self, t: float, bottom_angle: float) -> None:
@@ -192,8 +193,8 @@ class SquatExercise(Exercise):
         self._mid_angle = None
 
     def _finish_concentric(self, t: float, final_angle: float) -> None:
-        if self._descent_start_t is not None:
-            self._last_rep_duration_s = max(0.0, t - self._descent_start_t)
+        if self._rep_cycle_start_t is not None:
+            self._last_rep_duration_s = max(0.0, t - self._rep_cycle_start_t)
 
         start = self._concentric_start_t if self._concentric_start_t is not None else self._bottom_t
         if start is not None:
@@ -224,6 +225,7 @@ class SquatExercise(Exercise):
         self._bottom_t = None
         self._bottom_angle = None
         self._eccentric_start_angle = None
+        self._rep_cycle_start_t = None
 
     def _update_fatigue_history(self, v_bottom_half: float, v_top_half: float) -> None:
         eps = 1e-3
@@ -242,9 +244,10 @@ class SquatExercise(Exercise):
         self._rep_count += 1
         self._last_rep_end_t = t
 
-        # --- NEW: Append to averages only on successful rep count ---
         if getattr(self, "_last_rep_duration_s", None) is not None:
             self._rep_durations.append(self._last_rep_duration_s)
+
+        # Only appends the deepest angle of this specific rep
         if bottom_angle is not None:
             self._rep_depths.append(self._depth_percent(bottom_angle))
 
@@ -323,30 +326,32 @@ class SquatExercise(Exercise):
         self._update_phase(t, sm, raw_dang)
 
         hint_key, hint_text, dbg = self._fatigue_hints()
+        dp_instant = self._depth_percent(sm)
 
-        metrics = {
+        metrics: Dict[str, Any] = {
             "knee_angle_deg": round(sm, 2),
-            "depth_percent": round(self._depth_percent(sm), 1),
+            "depth_percent": round(dp_instant, 1),
             "phase": self._phase.name,
             "rep_count": self._rep_count,
             "visible": True,
         }
 
-        # Shows a running stopwatch while actively squatting
-        if self._phase in (SquatPhase.ECCENTRIC, SquatPhase.BOTTOM, SquatPhase.CONCENTRIC) and self._descent_start_t is not None:
-            metrics["live_rep_duration_s"] = round(max(0.0, t - self._descent_start_t), 1)
+        # Timer for the current live rep
+        if self._rep_cycle_start_t is not None and self._phase in (
+            SquatPhase.ECCENTRIC, SquatPhase.BOTTOM, SquatPhase.CONCENTRIC,
+        ):
+            elapsed = max(0.0, t - self._rep_cycle_start_t)
+            metrics["rep_speed_timer_s"] = round(elapsed, 2)
+            metrics["live_rep_duration_s"] = round(elapsed, 2)
 
-        # Outputs the final combined time of the completed rep
-        if getattr(self, "_last_rep_duration_s", None) is not None:
-            metrics["last_rep_duration_s"] = round(self._last_rep_duration_s, 2)
-
-        # --- NEW AVERAGE METRICS ---
+        # Averages calculated from the per-rep arrays
         if self._rep_durations:
-            metrics["average_rep_duration_s"] = round(sum(self._rep_durations) / len(self._rep_durations), 2)
+            avg_rep = round(sum(self._rep_durations) / len(self._rep_durations), 2)
+            metrics["average_rep_duration_s"] = avg_rep
+
         if self._rep_depths:
             metrics["average_depth_percent"] = round(sum(self._rep_depths) / len(self._rep_depths), 1)
 
-        # Include internal fatigue data
         if self._last_rep_speeds is not None:
             _, _, vb, vt = self._last_rep_speeds
             metrics.update({

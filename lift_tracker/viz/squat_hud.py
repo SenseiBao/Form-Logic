@@ -38,32 +38,26 @@ def draw_squat_hud(frame_bgr: np.ndarray, metrics: Dict[str, Any]) -> None:
 
     lines: List[str] = []
 
-    if "depth_percent" in metrics:
-        lines.append(f"Depth: {float(metrics['depth_percent']):.0f}%  (100% = bottom of target ROM)")
-    if "knee_angle_deg" in metrics:
-        lines.append(f"Hip-knee-ankle: {float(metrics['knee_angle_deg']):.1f} deg")
-    if "phase" in metrics:
-        lines.append(f"Phase: {metrics['phase']}")
     if "rep_count" in metrics:
         lines.append(f"Reps: {metrics['rep_count']}")
+    if "phase" in metrics:
+        lines.append(f"Phase: {metrics['phase']}")
+    if "knee_angle_deg" in metrics:
+        lines.append(f"Hip-knee-ankle: {float(metrics['knee_angle_deg']):.1f} deg")
 
-    if "live_eccentric_deg_s" in metrics:
-        lines.append(f"Eccentric (this rep, avg): {float(metrics['live_eccentric_deg_s']):.1f} deg/s")
-    if "live_concentric_deg_s" in metrics:
-        lines.append(f"Concentric (this rep, avg): {float(metrics['live_concentric_deg_s']):.1f} deg/s")
+    lines.append("") # Spacing
 
-    es = metrics.get("last_rep_eccentric_duration_s")
-    cs = metrics.get("last_rep_concentric_duration_s")
-    ecc = metrics.get("last_rep_eccentric_mean_deg_s")
-    con = metrics.get("last_rep_concentric_mean_deg_s")
-    if ecc is not None or es is not None:
-        sp = f"{ecc:.1f} deg/s" if ecc is not None else "—"
-        dur = f"{es:.2f} s" if es is not None else "—"
-        lines.append(f"Last rep eccentric: {sp}  ({dur})")
-    if con is not None or cs is not None:
-        sp = f"{con:.1f} deg/s" if con is not None else "—"
-        dur = f"{cs:.2f} s" if cs is not None else "—"
-        lines.append(f"Last rep concentric: {sp}  ({dur})")
+    if "depth_percent" in metrics:
+        lines.append(f"Current Depth: {float(metrics['depth_percent']):.0f}%")
+    if "average_depth_percent" in metrics:
+        lines.append(f"Avg Depth (per rep): {float(metrics['average_depth_percent']):.1f}%")
+
+    lines.append("") # Spacing
+
+    if "rep_speed_timer_s" in metrics:
+        lines.append(f"Current Rep Time: {float(metrics['rep_speed_timer_s']):.2f}s")
+    if "average_rep_duration_s" in metrics:
+        lines.append(f"Avg Rep Time: {float(metrics['average_rep_duration_s']):.2f}s")
 
     if not lines:
         return
