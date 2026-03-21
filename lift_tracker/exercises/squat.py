@@ -92,11 +92,41 @@ class SquatExercise(Exercise):
         self._rep_durations: List[float] = []
         self._rep_depths: List[float] = []
 
+        # --- NEW TRACKERS FOR BACK ANGLE ---
+        self._current_rep_max_lean: float = 0.0
+        self._rep_max_leans: List[float] = []
+
     def _depth_percent(self, knee_angle_deg: float) -> float:
         stand = float(self.cfg.standing_angle_min_deg)
         deep = float(self.cfg.bottom_angle_max_deg)
         span = max(1e-6, stand - deep)
         return float(max(0.0, min(100.0, (stand - knee_angle_deg) / span * 100.0)))
+
+    def _torso_angle(self, lm: LandmarkFrame) -> Tuple[Optional[float], bool]:
+        """Calculates the back lean angle relative to a perfectly vertical line."""
+        pl = PoseLandmark
+        idx = [
+            pl.LEFT_SHOULDER, pl.LEFT_HIP,
+            pl.RIGHT_SHOULDER, pl.RIGHT_HIP,
+        ]
+        if not lm.confident(idx, self.cfg.min_vis):
+            return None, False
+
+        ls, rs = lm.xy[pl.LEFT_SHOULDER], lm.xy[pl.RIGHT_SHOULDER]
+        lh, rh = lm.xy[pl.LEFT_HIP], lm.xy[pl.RIGHT_HIP]
+
+        shoulder, vs = blend_visibility(ls, rs, float(lm.visibility[pl.LEFT_SHOULDER]), float(lm.visibility[pl.RIGHT_SHOULDER]))
+        hip, vh = blend_visibility(lh, rh, float(lm.visibility[pl.LEFT_HIP]), float(lm.visibility[pl.RIGHT_HIP]))
+        vis_ok = (vs + vh) / 2.0 >= self.cfg.min_vis
+
+        # Vector from hip to shoulder
+        dx = shoulder[0] - hip[0]
+        dy = shoulder[1] - hip[1]
+
+        # Calculate angle relative to the vertical Y-axis
+        # 0 degrees = perfectly upright
+        angle_rad = math.atan2(abs(dx), abs(dy))
+        return float(math.degrees(angle_rad)), vis_ok
 
     def _knee_angle(self, lm: LandmarkFrame) -> Tuple[Optional[float], bool]:
         pl = PoseLandmark
@@ -133,6 +163,7 @@ class SquatExercise(Exercise):
                     self._descent_start_t = t
                     self._eccentric_start_angle = ang
                 self._rep_cycle_start_t = t
+                self._current_rep_max_lean = 0.0  # Reset max lean tracker at the start of rep
         elif self._phase == SquatPhase.ECCENTRIC:
             if ang <= deep + 8.0 and abs(dang_dt) < 40.0:
                 self._phase = SquatPhase.BOTTOM
@@ -247,9 +278,12 @@ class SquatExercise(Exercise):
         if getattr(self, "_last_rep_duration_s", None) is not None:
             self._rep_durations.append(self._last_rep_duration_s)
 
-        # Only appends the deepest angle of this specific rep
         if bottom_angle is not None:
             self._rep_depths.append(self._depth_percent(bottom_angle))
+
+        # Save the maximum lean of this completed rep
+        if getattr(self, "_current_rep_max_lean", None) is not None and self._current_rep_max_lean > 0.0:
+            self._rep_max_leans.append(self._current_rep_max_lean)
 
     def _track_concentric_halves(self, t: float, ang: float, dang_dt: float) -> None:
         if self._phase != SquatPhase.CONCENTRIC or self._conc_sub == _ConcentricSubphase.NONE:
@@ -325,6 +359,14 @@ class SquatExercise(Exercise):
             self._track_concentric_halves(t, sm, dsm)
         self._update_phase(t, sm, raw_dang)
 
+        # --- NEW BACK ANGLE LOGIC ---
+        torso_ang, torso_ok = self._torso_angle(landmarks)
+        if torso_ok and torso_ang is not None:
+            # Continuously search for the highest forward lean while actively moving
+            if self._phase in (SquatPhase.ECCENTRIC, SquatPhase.BOTTOM, SquatPhase.CONCENTRIC):
+                self._current_rep_max_lean = max(self._current_rep_max_lean, torso_ang)
+
+
         hint_key, hint_text, dbg = self._fatigue_hints()
         dp_instant = self._depth_percent(sm)
 
@@ -351,6 +393,12 @@ class SquatExercise(Exercise):
 
         if self._rep_depths:
             metrics["average_depth_percent"] = round(sum(self._rep_depths) / len(self._rep_depths), 1)
+
+        # Output Back Angle data
+        if torso_ok and torso_ang is not None:
+            metrics["torso_angle_deg"] = round(torso_ang, 1)
+        if self._rep_max_leans:
+            metrics["average_max_lean_deg"] = round(sum(self._rep_max_leans) / len(self._rep_max_leans), 1)
 
         if self._last_rep_speeds is not None:
             _, _, vb, vt = self._last_rep_speeds

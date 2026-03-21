@@ -54,6 +54,13 @@ def draw_squat_hud(frame_bgr: np.ndarray, metrics: Dict[str, Any]) -> None:
 
     lines.append("") # Spacing
 
+    if "torso_angle_deg" in metrics:
+        lines.append(f"Current Back Lean: {float(metrics['torso_angle_deg']):.1f} deg (from vertical)")
+    if "average_max_lean_deg" in metrics:
+        lines.append(f"Avg Max Lean (per rep): {float(metrics['average_max_lean_deg']):.1f} deg")
+
+    lines.append("") # Spacing
+
     if "rep_speed_timer_s" in metrics:
         lines.append(f"Current Rep Time: {float(metrics['rep_speed_timer_s']):.2f}s")
     if "average_rep_duration_s" in metrics:
