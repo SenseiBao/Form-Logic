@@ -84,6 +84,16 @@ class SquatExercise(Exercise):
         self._hist_top_slow: List[float] = []
         self._hist_window = 5
         self._prev_smo = None
+        self._eccentric_start_angle = None
+        self._last_rep_eccentric_mean_deg_s = None
+        self._last_rep_concentric_mean_deg_s = None
+
+    def _depth_percent(self, knee_angle_deg: float) -> float:
+        """0 = upright, 100 = at/ past configured bottom (hip–knee–ankle)."""
+        stand = float(self.cfg.standing_angle_min_deg)
+        deep = float(self.cfg.bottom_angle_max_deg)
+        span = max(1e-6, stand - deep)
+        return float(max(0.0, min(100.0, (stand - knee_angle_deg) / span * 100.0)))
 
     def _knee_angle(self, lm: LandmarkFrame) -> Tuple[Optional[float], bool]:
         pl = PoseLandmark
@@ -128,6 +138,7 @@ class SquatExercise(Exercise):
                 self._phase = SquatPhase.ECCENTRIC
                 if self._descent_start_t is None:
                     self._descent_start_t = t
+                    self._eccentric_start_angle = ang
         elif self._phase == SquatPhase.ECCENTRIC:
             if ang <= deep + 8.0 and abs(dang_dt) < 40.0:
                 self._phase = SquatPhase.BOTTOM
@@ -154,6 +165,8 @@ class SquatExercise(Exercise):
                 # lost balance / going down again
                 self._phase = SquatPhase.ECCENTRIC
                 self._abort_concentric()
+                self._descent_start_t = t
+                self._eccentric_start_angle = ang
 
     def _clear_rep_timers(self) -> None:
         self._descent_start_t = None
@@ -161,6 +174,7 @@ class SquatExercise(Exercise):
         self._bottom_angle = None
         self._eccentric_duration_s = None
         self._concentric_duration_s = None
+        self._eccentric_start_angle = None
         self._abort_concentric()
 
     def _begin_concentric(self, t: float, bottom_angle: float) -> None:
@@ -196,11 +210,20 @@ class SquatExercise(Exercise):
         e = self._eccentric_duration_s
         c = self._concentric_duration_s
         self._last_rep_speeds = (e or 0.0, c or 0.0, v_b, v_t)
+        ea = self._eccentric_start_angle
+        ba = self._bottom_angle
+        self._last_rep_eccentric_mean_deg_s = None
+        self._last_rep_concentric_mean_deg_s = None
+        if ea is not None and ba is not None and e and e > 1e-6:
+            self._last_rep_eccentric_mean_deg_s = max(0.0, (ea - ba) / e)
+        if ba is not None and c and c > 1e-6:
+            self._last_rep_concentric_mean_deg_s = max(0.0, (final_angle - ba) / c)
         self._update_fatigue_history(v_b, v_t)
         self._abort_concentric()
         self._descent_start_t = None
         self._bottom_t = None
         self._bottom_angle = None
+        self._eccentric_start_angle = None
 
     def _update_fatigue_history(self, v_bottom_half: float, v_top_half: float) -> None:
         # Store "slowness" as inverse speed (higher = more struggle if speed is low)
@@ -304,14 +327,27 @@ class SquatExercise(Exercise):
 
         metrics = {
             "knee_angle_deg": round(sm, 2),
+            "depth_percent": round(self._depth_percent(sm), 1),
             "phase": self._phase.name,
             "rep_count": self._rep_count,
             "visible": True,
         }
+        # Live phase speeds (mean knee flexion / extension rate over current phase so far).
+        if self._phase == SquatPhase.ECCENTRIC and self._descent_start_t is not None and self._eccentric_start_angle is not None:
+            dt_e = max(1e-6, t - self._descent_start_t)
+            metrics["live_eccentric_deg_s"] = round(max(0.0, (self._eccentric_start_angle - sm) / dt_e), 1)
+        if self._phase == SquatPhase.CONCENTRIC and self._concentric_start_t is not None and self._bottom_angle is not None:
+            dt_c = max(1e-6, t - self._concentric_start_t)
+            metrics["live_concentric_deg_s"] = round(max(0.0, (sm - self._bottom_angle) / dt_c), 1)
+
         if self._eccentric_duration_s is not None:
             metrics["last_eccentric_duration_s"] = round(self._eccentric_duration_s, 3)
         if self._concentric_duration_s is not None:
             metrics["last_concentric_duration_s"] = round(self._concentric_duration_s, 3)
+        if self._last_rep_eccentric_mean_deg_s is not None:
+            metrics["last_rep_eccentric_mean_deg_s"] = round(self._last_rep_eccentric_mean_deg_s, 1)
+        if self._last_rep_concentric_mean_deg_s is not None:
+            metrics["last_rep_concentric_mean_deg_s"] = round(self._last_rep_concentric_mean_deg_s, 1)
         if self._last_rep_speeds is not None:
             e, c, vb, vt = self._last_rep_speeds
             metrics.update(

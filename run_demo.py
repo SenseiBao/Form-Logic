@@ -9,8 +9,11 @@ Usage (from repo root):
 If `import mediapipe` fails with null bytes, your user site-packages install is
 corrupted — use the venv above or reinstall mediapipe with --force-reinstall.
 
+On first run the pose model is downloaded to %USERPROFILE%\\.cache\\form_logic\\
+mediapipe_models (requires network).
+
 By default only prints JSON lines to stdout (no window). Use --preview to
-open a camera window; press 'q' to quit.
+open a camera window with skeleton + squat metrics overlay; press 'q' to quit.
 """
 
 from __future__ import annotations
@@ -23,12 +26,18 @@ import cv2
 
 from lift_tracker.exercises.squat import SquatExercise
 from lift_tracker.pipeline import TrackingPipeline
+from lift_tracker.pose.skeleton import draw_pose_skeleton
+from lift_tracker.viz import draw_squat_hud
 
 
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--camera", type=int, default=0)
-    p.add_argument("--no-preview", action="store_true", help="Do not open a preview window.")
+    p.add_argument(
+        "--preview",
+        action="store_true",
+        help="Open a preview window with skeleton overlay.",
+    )
     p.add_argument("--every", type=int, default=3, help="Print every N frames.")
     args = p.parse_args()
 
@@ -55,7 +64,11 @@ def main() -> None:
                 print(json.dumps(line), flush=True)
 
             if args.preview:
-                cv2.imshow("lift_tracker (q to quit)", frame)
+                display = frame.copy()
+                if packet.landmarks is not None:
+                    draw_pose_skeleton(display, packet.landmarks)
+                draw_squat_hud(display, packet.exercise.metrics)
+                cv2.imshow("lift_tracker (q to quit)", display)
                 if cv2.waitKey(1) & 0xFF == ord("q"):
                     break
     finally:

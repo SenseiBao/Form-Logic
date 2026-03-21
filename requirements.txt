@@ -1,4 +1,4 @@
-# Core tracking (Windows-friendly)
-mediapipe>=0.10.14
+# Core tracking (Windows-friendly). Tasks API requires 0.10.31+.
+mediapipe>=0.10.31
 opencv-python>=4.8.0
 numpy>=1.24.0
