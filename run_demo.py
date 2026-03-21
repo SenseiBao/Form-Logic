@@ -2,8 +2,12 @@
 Minimal webcam loop: prints tracking metrics to stdout (no GUI).
 
 Usage (from repo root):
-  pip install -r requirements.txt
+  powershell -ExecutionPolicy Bypass -File scripts\\setup_venv.ps1
+  .\\.venv\\Scripts\\Activate.ps1
   python run_demo.py
+
+If `import mediapipe` fails with null bytes, your user site-packages install is
+corrupted — use the venv above or reinstall mediapipe with --force-reinstall.
 
 By default only prints JSON lines to stdout (no window). Use --preview to
 open a camera window; press 'q' to quit.

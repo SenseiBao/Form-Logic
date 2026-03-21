@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 
 import cv2
-import mediapipe as mp
 import numpy as np
 
-from lift_tracker.pose.landmarks import LandmarkFrame, empty_landmark_frame
+from lift_tracker.pose.landmarks import LandmarkFrame
 
 
 @dataclass
@@ -22,6 +21,10 @@ class MediaPipePoseBackend:
     """Thin wrapper around MediaPipe Pose (holistic 33 landmarks)."""
 
     def __init__(self, config: Optional[MediaPipePoseConfig] = None) -> None:
+        # Import here so a broken site-packages mediapipe install does not fail
+        # on `import lift_tracker` before the backend is used.
+        import mediapipe as mp
+
         self._cfg = config or MediaPipePoseConfig()
         self._pose = mp.solutions.pose.Pose(
             static_image_mode=False,
@@ -34,7 +37,7 @@ class MediaPipePoseBackend:
     def close(self) -> None:
         self._pose.close()
 
-    def process_bgr(self, frame_bgr: np.ndarray) -> Tuple[Optional[LandmarkFrame], object]:
+    def process_bgr(self, frame_bgr: np.ndarray) -> Tuple[Optional[LandmarkFrame], Any]:
         """
         Returns (landmarks or None if no pose, raw_results for debugging).
         """

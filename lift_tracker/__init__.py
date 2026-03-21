@@ -1,5 +1,3 @@
-"""Modular pose + exercise tracking (MediaPipe). UI-agnostic core."""
+"""Modular pose + exercise tracking. Prefer explicit imports, e.g. `lift_tracker.pipeline`."""
 
-from lift_tracker.pipeline import TrackingPipeline
-
-__all__ = ["TrackingPipeline"]
+__all__: list[str] = []
