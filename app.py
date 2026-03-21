@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import ttk
 import cv2
+import time
 
 from lift_tracker.exercises.squat import SquatExercise
 from lift_tracker.exercises.bicep_curl import BicepCurlExercise
@@ -43,7 +44,6 @@ class FormLogicUI:
     def start_tracker(self):
         selection = self.exercise_var.get()
 
-        # Map the dropdown choice to the correct math module
         if "Squat" in selection:
             active_exercise = SquatExercise()
         elif "Bicep Curl" in selection:
@@ -56,49 +56,78 @@ class FormLogicUI:
         self.run_webcam_loop(active_exercise)
 
     def run_webcam_loop(self, exercise_module):
-        # Hide the UI window while the camera is active
         self.root.withdraw()
 
         cap = cv2.VideoCapture(0)
         pipe = TrackingPipeline(exercise_module)
 
+        # --- 5 SECOND COUNTDOWN LOGIC ---
+        start_time = time.time()
+        countdown_duration = 5
+
+        while True:
+            ok, frame = cap.read()
+            if not ok: break
+
+            elapsed = time.time() - start_time
+            remaining = int(countdown_duration - elapsed) + 1
+
+            if remaining <= 0:
+                break
+
+            display = frame.copy()
+            h, w, _ = display.shape
+
+            # Draw big centered text
+            text = str(remaining)
+            font = cv2.FONT_HERSHEY_SIMPLEX
+            font_scale = 5
+            thickness = 10
+            text_size = cv2.getTextSize(text, font, font_scale, thickness)[0]
+
+            text_x = (w - text_size[0]) // 2
+            text_y = (h + text_size[1]) // 2
+
+            # Outline for visibility
+            cv2.putText(display, text, (text_x, text_y), font, font_scale, (0, 0, 0), thickness + 5, cv2.LINE_AA)
+            # Actual White Text
+            cv2.putText(display, text, (text_x, text_y), font, font_scale, (255, 255, 255), thickness, cv2.LINE_AA)
+
+            cv2.imshow("Form-Logic (Press 'Q' to Exit)", display)
+            if cv2.waitKey(1) & 0xFF == ord("q"):
+                cap.release()
+                cv2.destroyAllWindows()
+                self.root.deiconify()
+                return
+
+        # --- ACTIVE TRACKING LOOP ---
         try:
             while cap.isOpened():
                 ok, frame = cap.read()
                 if not ok:
                     break
 
-                # Run the math on the frame
                 packet = pipe.process_bgr(frame)
                 display = frame.copy()
 
-                # Draw the skeleton
                 if packet.landmarks is not None:
                     draw_pose_skeleton(display, packet.landmarks)
 
-                # Draw the HUD overlay
                 draw_squat_hud(display, packet.exercise.metrics)
 
-                # Show the window
                 cv2.imshow("Form-Logic (Press 'Q' to Exit)", display)
 
-                # Break the loop if the user presses 'q'
                 if cv2.waitKey(1) & 0xFF == ord("q"):
                     break
         finally:
             cap.release()
             pipe.close()
             cv2.destroyAllWindows()
-
-            # Bring the UI menu back!
             self.root.deiconify()
 
-# THIS is the block that actually starts the app!
 if __name__ == "__main__":
     root = tk.Tk()
-
     style = ttk.Style()
     style.theme_use('clam')
-
     app = FormLogicUI(root)
     root.mainloop()
