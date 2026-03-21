@@ -124,7 +124,7 @@ class BicepCurlExercise(Exercise):
         if self._phase in (CurlPhase.UNKNOWN, CurlPhase.BOTTOM):
             if ang >= ext - 15.0:
                 self._phase = CurlPhase.BOTTOM
-            elif ang < ext - 15.0 and dang_dt < -5.0:
+            elif ang < ext - 20.0:
                 self._phase = CurlPhase.CONCENTRIC
                 self._rep_cycle_start_t = t
                 self._current_max_conc_depth = 0.0
@@ -133,32 +133,25 @@ class BicepCurlExercise(Exercise):
                 self._current_min_angle = ang
 
         elif self._phase == CurlPhase.CONCENTRIC:
-            if ang <= flex + 15.0 and dang_dt > -5.0:
+            if ang <= flex + 20.0:
                 self._phase = CurlPhase.TOP
             elif dang_dt > 15.0:
                 self._phase = CurlPhase.ECCENTRIC
 
         elif self._phase == CurlPhase.TOP:
-            if ang > flex + 15.0 and dang_dt > 5.0:
+            if ang > flex + 20.0 and dang_dt > 5.0:
                 self._phase = CurlPhase.ECCENTRIC
 
         elif self._phase == CurlPhase.ECCENTRIC:
-            if ang >= ext - 20.0 and dang_dt < 5.0:
+            if ang >= ext - 25.0:  # Returned to the bottom
                 self._phase = CurlPhase.BOTTOM
                 # Check if the arm bent far enough to count!
                 had_depth = self._current_min_angle <= self.cfg.min_flexion_for_rep_deg
                 self._try_count_rep(t, had_depth)
 
-            elif dang_dt < -15.0:
-                had_depth = self._current_min_angle <= self.cfg.min_flexion_for_rep_deg
-                self._try_count_rep(t, had_depth)
-
+            elif dang_dt < -15.0:  # Twitched/Started curling back up mid-way
                 self._phase = CurlPhase.CONCENTRIC
-                self._rep_cycle_start_t = t
-                self._current_max_conc_depth = 0.0
-                self._current_max_ecc_depth = 0.0
-                self._current_max_lean = 0.0
-                self._current_min_angle = ang
+                # NOTE: We no longer call _try_count_rep here! The rep only counts at BOTTOM.
 
     def _try_count_rep(self, t: float, had_depth: bool) -> None:
         if t - self._last_rep_end_t < self.cfg.min_rep_interval_s:
