@@ -43,6 +43,7 @@ from ui.onboarding_dialog import OnboardingDialog
 from ui.paths import HISTORY_JSON
 from ui.profile_store import clear_profile_and_history, load_profile, log_weight, needs_onboarding, save_profile
 from ui.recording_window import RecordingSession
+from ui.chat_view import ChatView
 from ui.self_view import SelfView
 from ui.settings_view import SettingsView
 from ui import theme
@@ -126,6 +127,7 @@ class FormLogicApp:
         self._home = HomeView(self._content, user_name=first_name, on_begin=self._on_begin, bg=self.BG)
         self._history = HistoryView(self._content, bg=self.BG, on_open_session=self._show_session_summary)
         self._self = SelfView(self._content, bg=self.BG)
+        self._chat = ChatView(self._content, bg=self.BG)
         self._settings = SettingsView(
             self._content,
             bg=self.BG,
@@ -180,6 +182,7 @@ class FormLogicApp:
         self._home.pack_forget()
         self._history.pack_forget()
         self._self.pack_forget()
+        self._chat.pack_forget()
         self._settings.pack_forget()
         if tab == "home":
             self._home.refresh_stats()
@@ -191,6 +194,8 @@ class FormLogicApp:
         elif tab == "self":
             self._self.refresh()
             self._self.pack(fill=tk.BOTH, expand=True)
+        elif tab == "chat":
+            self._chat.pack(fill=tk.BOTH, expand=True)
         else:
             self._settings.refresh_from_profile()
             self._settings.pack(fill=tk.BOTH, expand=True)
@@ -248,6 +253,7 @@ class FormLogicApp:
         self._home.pack_forget()
         self._history.pack_forget()
         self._self.pack_forget()
+        self._chat.pack_forget()
         self._settings.pack_forget()
         self._nav.pack_forget()
         self._recording = RecordingSession(
@@ -268,6 +274,7 @@ class FormLogicApp:
         self._home.pack_forget()
         self._history.pack_forget()
         self._self.pack_forget()
+        self._chat.pack_forget()
         self._settings.pack_forget()
 
         def _wrapped_done() -> None:

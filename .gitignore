@@ -2,3 +2,6 @@
 __pycache__/
 *.py[cod]
 profile.json
+api_config.json
+history.json
+weight_log.json

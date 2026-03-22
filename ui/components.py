@@ -8,7 +8,7 @@ from PIL import ImageTk
 from ui import theme
 
 
-TabId = Literal["home", "history", "self", "settings"]
+TabId = Literal["home", "history", "self", "chat", "settings"]
 
 
 def _parent_bg(parent: tk.Misc, fallback: str) -> str:
@@ -295,6 +295,7 @@ class BottomNav(tk.Frame):
             ("home", "Home"),
             ("history", "History"),
             ("self", "Self"),
+            ("chat", "Chat"),
             ("settings", "Settings"),
         ]:
             lbl = tk.Label(
@@ -304,7 +305,7 @@ class BottomNav(tk.Frame):
                 fg=theme.ACCENT_NAV_ACTIVE if tid == "home" else theme.TEXT_MUTED,
                 bg=theme.CARD_WHITE,
                 cursor="hand2",
-                padx=18,
+                padx=13,
                 pady=4,
             )
             lbl.pack(side=tk.LEFT, expand=True)
