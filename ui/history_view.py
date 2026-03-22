@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import tkinter as tk
 from tkinter import messagebox
+from tkinter import ttk
 from collections import defaultdict
 from datetime import datetime
 from typing import Any, Callable, DefaultDict, Dict, List, Optional
@@ -61,6 +62,15 @@ def group_by_day(entries: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]
     return {d: by_day[d] for d in ordered}
 
 
+# (label, exercise id or None for all)
+_LIFT_FILTER_OPTIONS: List[tuple[str, Optional[str]]] = [
+    ("All exercises", None),
+    ("Squat", "squat"),
+    ("Bicep curl", "bicep_curl"),
+    ("Pull-up", "pullup"),
+]
+
+
 def _fmt_metrics(m: Dict[str, Any]) -> str:
     parts: List[str] = []
     if "total_reps" in m:
@@ -96,6 +106,26 @@ class HistoryView(tk.Frame):
             bg=bg,
         ).pack(anchor="w", padx=28, pady=(16, 8))
 
+        filter_row = tk.Frame(self, bg=bg, highlightthickness=0, bd=0)
+        filter_row.pack(fill=tk.X, padx=28, pady=(0, 8))
+        tk.Label(
+            filter_row,
+            text="Show:",
+            font=theme.FONT_BODY,
+            fg=theme.TEXT_MUTED,
+            bg=bg,
+        ).pack(side=tk.LEFT)
+        self._lift_filter_label = tk.StringVar(value=_LIFT_FILTER_OPTIONS[0][0])
+        self._filter_combo = ttk.Combobox(
+            filter_row,
+            textvariable=self._lift_filter_label,
+            values=[x[0] for x in _LIFT_FILTER_OPTIONS],
+            state="readonly",
+            width=20,
+        )
+        self._filter_combo.pack(side=tk.LEFT, padx=(10, 0))
+        self._filter_combo.bind("<<ComboboxSelected>>", lambda _e: self.refresh())
+
         self._scroll = ScrollableFrame(self, bg=bg)
         self._scroll.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 12))
         for seq in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
@@ -113,11 +143,21 @@ class HistoryView(tk.Frame):
         self._rows.clear()
 
         entries = load_history()
+        sel = self._lift_filter_label.get()
+        ex_key = next((k for lab, k in _LIFT_FILTER_OPTIONS if lab == sel), None)
+        if ex_key is not None:
+            entries = [e for e in entries if e.get("exercise") == ex_key]
+
         grouped = group_by_day(entries)
         if not grouped:
+            empty_msg = (
+                "No sessions for this lift yet."
+                if ex_key is not None
+                else "No workouts logged yet."
+            )
             lbl = tk.Label(
                 self._inner,
-                text="No workouts logged yet.",
+                text=empty_msg,
                 font=theme.FONT_BODY,
                 fg=theme.TEXT_MUTED,
                 bg=self._bg,

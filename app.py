@@ -1,13 +1,33 @@
 from __future__ import annotations
 
 import json
+import sys
+import types
 import uuid
 import tkinter as tk
 from tkinter import messagebox
 from tkinter import ttk
 from typing import Any, Callable, Dict, Optional
 
-from PIL import ImageTk
+try:
+    from PIL import ImageTk
+except ImportError:
+    # Pillow must load before any ui.* imports (theme/components use PIL).
+    _r = tk.Tk()
+    _r.withdraw()
+    messagebox.showerror(
+        "Missing Pillow",
+        "Form-Logic needs the Pillow package for the UI.\n\n"
+        "Install dependencies from the project folder:\n"
+        "  pip install -r requirements.txt\n\n"
+        "Or: pip install pillow",
+        parent=_r,
+    )
+    try:
+        _r.destroy()
+    except tk.TclError:
+        pass
+    sys.exit(1)
 
 from lift_tracker.exercises.bicep_curl import BicepCurlExercise
 from lift_tracker.exercises.pullup import PullUpExercise
@@ -43,6 +63,16 @@ def make_exercise(key: str):
     if key == "pullup":
         return PullUpExercise()
     return SquatExercise()
+
+
+def session_total_reps(log_entry: Dict[str, Any]) -> int:
+    m = log_entry.get("metrics")
+    if not isinstance(m, dict):
+        return 0
+    try:
+        return max(0, int(m.get("total_reps", 0)))
+    except (TypeError, ValueError):
+        return 0
 
 
 def save_log(entry: Dict[str, Any]) -> None:
@@ -260,13 +290,14 @@ class FormLogicApp:
         self._recording = None
 
         def _after_summary() -> None:
-            if messagebox.askyesno(
-                "Save workout?",
-                "Save this session to your history?\n\nChoose No to discard it.",
-                icon="question",
-                parent=self.root,
-            ):
-                save_log(log_entry)
+            if session_total_reps(log_entry) > 0:
+                if messagebox.askyesno(
+                    "Save workout?",
+                    "Save this session to your history?\n\nChoose No to discard it.",
+                    icon="question",
+                    parent=self.root,
+                ):
+                    save_log(log_entry)
             self._nav.set_active("home")
             self._show_tab("home")
             self._history.refresh()
@@ -275,8 +306,16 @@ class FormLogicApp:
 
 
 def main() -> None:
+    import traceback
+
     enable_windows_dpi_awareness()
     root = tk.Tk()
+
+    def _report_tk_callback(self: tk.Tk, exc: type, val: BaseException, tb: object) -> None:
+        traceback.print_exception(exc, val, tb)
+
+    root.report_callback_exception = types.MethodType(_report_tk_callback, root)  # type: ignore[method-assign]
+
     apply_tk_scaling(root)
 
     profile = load_profile()

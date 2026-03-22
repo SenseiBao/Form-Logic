@@ -39,6 +39,8 @@ class HomeView(tk.Frame):
         self.exercise_var = tk.StringVar(value=self.EXERCISES[0][0])
         self.reps_var = tk.StringVar(value="4")
         self.lift_weight_var = tk.StringVar(value="")
+        self._feedback_wrap_after: Optional[str] = None
+        self._last_feedback_wrap: Optional[int] = None
 
         greet_strip = tk.Frame(self, bg=theme.HOME_GREETING_BG, highlightthickness=0, bd=0)
         greet_strip.pack(fill=tk.X)
@@ -94,9 +96,6 @@ class HomeView(tk.Frame):
         self._build_workout_card(left_card.body())
         self._build_feedback_card(today_card.body())
         self._build_stats_card(stats_card.body())
-
-    def _on_home_configure(self, event: tk.Event) -> None:
-        pass  # dynamic wraplength no longer needed
 
     def set_first_name(self, name: str) -> None:
         self.user_name = name.strip() or "there"
@@ -207,7 +206,6 @@ class HomeView(tk.Frame):
         if cav is not None:
             for seq in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
                 cav.bind(seq, self._feedback_scroll.on_mousewheel)
-        self._feedback_scroll.bind("<Configure>", self._on_feedback_resize)
 
         self._populate_feedback()
 
@@ -215,8 +213,38 @@ class HomeView(tk.Frame):
         if hasattr(self, "_feedback_scroll"):
             self._populate_feedback()
 
-    def _on_feedback_resize(self, event: tk.Event) -> None:
-        wrap = max(200, event.width - 36)
+    def _on_home_configure(self, event: tk.Event) -> None:
+        # Only the HomeView frame — avoid child configure noise.
+        if event.widget is not self:
+            return
+        self._schedule_feedback_wrap()
+
+    def _schedule_feedback_wrap(self) -> None:
+        """Debounced: updating wraplength on Configure was re-entering Tk and spamming errors."""
+        aid = self._feedback_wrap_after
+        if aid is not None:
+            try:
+                self.after_cancel(aid)
+            except (ValueError, tk.TclError):
+                pass
+            self._feedback_wrap_after = None
+        self._feedback_wrap_after = self.after(100, self._sync_feedback_wrap)
+
+    def _sync_feedback_wrap(self) -> None:
+        self._feedback_wrap_after = None
+        if not hasattr(self, "_feedback_scroll"):
+            return
+        try:
+            w = int(self._feedback_scroll.winfo_width())
+        except tk.TclError:
+            return
+        if w <= 1:
+            self.after(50, self._sync_feedback_wrap)
+            return
+        wrap = max(200, w - 36)
+        if self._last_feedback_wrap == wrap:
+            return
+        self._last_feedback_wrap = wrap
         for lbl in getattr(self, "_feedback_tip_labels", []):
             try:
                 lbl.config(wraplength=wrap)
@@ -226,6 +254,7 @@ class HomeView(tk.Frame):
     def _populate_feedback(self) -> None:
         from lift_tracker.form_feedback import form_suggestions_for_set
 
+        self._last_feedback_wrap = None
         self._feedback_tip_labels: List[tk.Label] = []
         inner = self._feedback_scroll.body()
         for w in inner.winfo_children():
@@ -290,6 +319,8 @@ class HomeView(tk.Frame):
                 )
                 lbl.pack(side=tk.LEFT, fill=tk.X, expand=True, anchor="nw")
                 self._feedback_tip_labels.append(lbl)
+
+        self.after_idle(self._schedule_feedback_wrap)
 
     def _build_stats_card(self, f: tk.Frame) -> None:
         tk.Label(
@@ -359,7 +390,11 @@ class HomeView(tk.Frame):
             if ex not in ("squat", "bicep_curl", "pullup"):
                 continue
             metrics = entry.get("metrics") or {}
-            reps = int(metrics.get("total_reps") or 0)
+            try:
+                raw_r = metrics.get("total_reps", 0)
+                reps = int(float(raw_r)) if raw_r is not None and raw_r != "" else 0
+            except (TypeError, ValueError):
+                continue
             if reps <= 0:
                 continue
 

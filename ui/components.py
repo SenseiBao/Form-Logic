@@ -46,6 +46,8 @@ class RoundedPanel(tk.Canvas):
         self._inset = inset if inset is not None else max(14, min(radius, 22))
         self._expand_fill = expand_fill
         self._photo: ImageTk.PhotoImage | None = None
+        self._last_paint_size: Tuple[int, int] = (0, 0)
+        self._hug_after_id: str | None = None
         inner_hex = "#%02x%02x%02x" % fill_rgb
         self._inner = tk.Frame(self, bg=inner_hex, highlightthickness=0, bd=0)
         self._win_id: int | None = None
@@ -60,11 +62,12 @@ class RoundedPanel(tk.Canvas):
     def fit_hug(self) -> None:
         if self._expand_fill:
             return
-        self._on_inner_configure()
+        self._deferred_hug()
 
     def _paint(self, w: int, h: int) -> None:
         if w < 4 or h < 4:
             return
+        self._last_paint_size = (w, h)
         fill = (*self._fill_rgb, self._fill_alpha)
         img = theme.rounded_rectangle_rgba(w, h, self._radius, fill, self._outline_rgba, 1)
         self._photo = ImageTk.PhotoImage(img, master=self)
@@ -79,10 +82,21 @@ class RoundedPanel(tk.Canvas):
         self.itemconfig(self._win_id, width=iw, height=ih)
 
     def _on_self_configure(self, event: tk.Event) -> None:
-        self._paint(max(4, event.width), max(4, event.height))
+        w, h = max(4, event.width), max(4, event.height)
+        if (w, h) == self._last_paint_size:
+            return
+        self._paint(w, h)
 
     def _on_inner_configure(self, _event: tk.Event | None = None) -> None:
-        self.update_idletasks()
+        if self._hug_after_id is not None:
+            try:
+                self.after_cancel(self._hug_after_id)
+            except (ValueError, tk.TclError):
+                pass
+        self._hug_after_id = self.after(20, self._deferred_hug)
+
+    def _deferred_hug(self) -> None:
+        self._hug_after_id = None
         try:
             mw = int(self.master.winfo_width())
         except tk.TclError:
@@ -94,8 +108,9 @@ class RoundedPanel(tk.Canvas):
         h = ih + 2 * ins
         w = max(w, 40)
         h = max(h, 28)
-        self.configure(width=w, height=h)
-        self._paint(w, h)
+        if (w, h) != self._last_paint_size:
+            self.configure(width=w, height=h)
+            self._paint(w, h)
 
 
 class PillButton(tk.Canvas):
@@ -300,6 +315,7 @@ class ScrollableFrame(tk.Frame):
         self._inner = tk.Frame(self._canvas, bg=bg, highlightthickness=0, bd=0)
         self._win_id = self._canvas.create_window((0, 0), window=self._inner, anchor="nw")
         self._canvas.configure(yscrollcommand=self._sb.set)
+        self._last_canvas_w: int = 0
 
         self._canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self._sb.pack(side=tk.RIGHT, fill=tk.Y)
@@ -311,7 +327,10 @@ class ScrollableFrame(tk.Frame):
         self._canvas.configure(scrollregion=self._canvas.bbox("all"))
 
     def _on_canvas_config(self, e: tk.Event) -> None:
-        self._canvas.itemconfig(self._win_id, width=e.width)
+        w = int(e.width)
+        if w != self._last_canvas_w:
+            self._last_canvas_w = w
+            self._canvas.itemconfig(self._win_id, width=w)
 
     def body(self) -> tk.Frame:
         return self._inner

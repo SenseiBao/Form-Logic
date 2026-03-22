@@ -1,95 +1,18 @@
 [
     {
-        "timestamp": "2026-03-22 00:30:43",
+        "timestamp": "2026-03-22 02:45:02",
         "exercise": "bicep_curl",
         "exercise_display": "BICEP CURL",
-        "metrics": {
-            "total_reps": 4,
-            "avg_rep_duration_s": 0.81,
-            "avg_conc_depth_pct": 100.0,
-            "avg_ecc_depth_pct": 98.7,
-            "avg_max_lean_deg": 26.2
-        },
-        "id": "c132b45a-d333-451a-ae1a-c162fbdcd5e8"
-    },
-    {
-        "timestamp": "2026-03-22 01:17:18",
-        "exercise": "squat",
-        "exercise_display": "SQUAT",
-        "metrics": {
-            "total_reps": 8,
-            "avg_rep_duration_s": 1.01,
-            "avg_depth_pct": 81.7,
-            "avg_max_lean_deg": 34.4,
-            "pct_reps_deep_enough": 50.0
-        },
-        "lift_weight_lbs": 245.0,
-        "count_mode": true,
-        "target_reps": null,
-        "id": "501616f4-5b52-4366-9219-24c364b86839"
-    },
-    {
-        "timestamp": "2026-03-22 01:38:13",
-        "exercise": "bicep_curl",
-        "exercise_display": "BICEP CURL",
-        "metrics": {
-            "total_reps": 17,
-            "avg_rep_duration_s": 0.93,
-            "avg_conc_depth_pct": 78.6,
-            "avg_ecc_depth_pct": 88.1,
-            "avg_max_lean_deg": 9.8,
-            "pct_reps_full_extension": 5.9
-        },
-        "count_mode": true,
-        "target_reps": null,
-        "id": "449f50d8-a371-460e-9dc5-f97b43e5a276"
-    },
-    {
-        "timestamp": "2026-03-22 01:39:59",
-        "exercise": "pullup",
-        "exercise_display": "PULL-UP",
-        "metrics": {
-            "total_reps": 3,
-            "avg_rep_duration_s": 0.27,
-            "avg_conc_depth_pct": 76.0,
-            "avg_ecc_depth_pct": 100.0,
-            "pct_reps_full_deadhang": 66.7,
-            "pct_reps_chin_over_bar": 100.0
-        },
-        "count_mode": true,
-        "target_reps": null,
-        "id": "97200cb0-8d1e-4400-b061-4838583a6403"
-    },
-    {
-        "timestamp": "2026-03-22 01:47:33",
-        "exercise": "pullup",
-        "exercise_display": "PULL-UP",
-        "metrics": {
-            "total_reps": 3,
-            "avg_rep_duration_s": 0.16,
-            "avg_conc_depth_pct": 79.4,
-            "avg_ecc_depth_pct": 100.0,
-            "pct_reps_full_deadhang": 100.0,
-            "pct_reps_chin_over_bar": 100.0
-        },
-        "count_mode": false,
-        "target_reps": 4,
-        "id": "d690acb7-8d03-4eaa-a290-07b520b7bb89"
-    },
-    {
-        "timestamp": "2026-03-22 02:01:10",
-        "exercise": "squat",
-        "exercise_display": "SQUAT",
         "metrics": {
             "total_reps": 6,
-            "avg_rep_duration_s": 0.87,
-            "avg_depth_pct": 92.9,
-            "avg_max_lean_deg": 34.4,
-            "pct_reps_deep_enough": 100.0
+            "avg_rep_duration_s": 2.0,
+            "avg_conc_depth_pct": 92.3,
+            "avg_ecc_depth_pct": 97.2,
+            "avg_max_lean_deg": 21.7,
+            "pct_reps_full_extension": 83.3
         },
-        "lift_weight_lbs": 255.0,
         "count_mode": false,
         "target_reps": 4,
-        "id": "0b10a0a5-9ad0-475f-8e7e-f779fad8dfe3"
+        "id": "bc5166ae-05b9-446f-a2b8-790c00d8465a"
     }
 ]

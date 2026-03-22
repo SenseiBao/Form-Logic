@@ -239,7 +239,9 @@ class SelfView(tk.Frame):
             radius=theme.CORNER_RADIUS_LG,
             fill_rgb=(255, 255, 255),
             fill_alpha=255,
+            expand_fill=False,
         )
+        self._profile_panel = panel
         panel.pack(fill=tk.X, padx=24, pady=(8, 0))
         wrap = tk.Frame(panel.body(), bg=theme.CARD_WHITE)
         wrap.pack(fill=tk.X, padx=20, pady=16)
@@ -284,6 +286,7 @@ class SelfView(tk.Frame):
         self._toggle_btn.pack(fill=tk.X, pady=(8, 0))
 
         self._weight_container = tk.Frame(wrap, bg=theme.CARD_WHITE)
+        panel.after_idle(panel.fit_hug)
 
     def _profile_rows(self, parent: tk.Frame, profile: UserProfile) -> None:
         def _row(label: str, value: str) -> None:
@@ -391,11 +394,14 @@ class SelfView(tk.Frame):
     # ── Lift progress card ────────────────────────────────────────────────────
 
     def _build_progress_card(self) -> None:
+        # expand_fill=False: hug content height. expand_fill=True clips the inner frame to a short canvas
+        # when this card lives inside ScrollableFrame (fill=X only), hiding rows like "Bicep Curl".
         panel = RoundedPanel(
             self._outer,
             radius=theme.CORNER_RADIUS_LG,
             fill_rgb=(255, 255, 255),
             fill_alpha=255,
+            expand_fill=False,
         )
         panel.pack(fill=tk.X, padx=24, pady=(12, 16))
         wrap = tk.Frame(panel.body(), bg=theme.CARD_WHITE)
@@ -437,6 +443,8 @@ class SelfView(tk.Frame):
                 wraplength=440,
                 justify="left",
             ).pack(anchor="w", pady=(8, 0))
+
+        panel.after_idle(panel.fit_hug)
 
     def _render_exercise_row(
         self,
@@ -493,23 +501,27 @@ class SelfView(tk.Frame):
         )
         box.pack(fill=tk.X, padx=(12, 0), pady=(4, 0))
 
-        tk.Label(
+        lbl_prev = tk.Label(
             box,
             text=_fmt_session(data["prev"], prev_score),
             font=theme.FONT_SMALL,
             fg=theme.TEXT_MUTED,
             bg=detail_bg,
             anchor="w",
-        ).pack(anchor="w", padx=10, pady=(8, 2))
+            justify=tk.LEFT,
+        )
+        lbl_prev.pack(anchor="w", padx=10, pady=(8, 2))
 
-        tk.Label(
+        lbl_curr = tk.Label(
             box,
             text=_fmt_session(data["curr"], curr_score),
             font=theme.FONT_SMALL,
             fg=theme.TEXT_PRIMARY,
             bg=detail_bg,
             anchor="w",
-        ).pack(anchor="w", padx=10, pady=(2, 4))
+            justify=tk.LEFT,
+        )
+        lbl_curr.pack(anchor="w", padx=10, pady=(2, 4))
 
         msg_row = tk.Frame(box, bg=detail_bg)
         msg_row.pack(fill=tk.X, padx=10, pady=(0, 10))
@@ -519,14 +531,32 @@ class SelfView(tk.Frame):
             font=("Helvetica", 13, "bold"),
             fg=arrow_color,
             bg=detail_bg,
-        ).pack(side=tk.LEFT, padx=(0, 6))
-        tk.Label(
+        ).pack(side=tk.LEFT, padx=(0, 6), anchor="nw")
+        lbl_msg = tk.Label(
             msg_row,
             text=msg,
             font=theme.FONT_SMALL,
             fg=msg_color,
             bg=detail_bg,
-            wraplength=400,
-            justify="left",
+            justify=tk.LEFT,
             anchor="nw",
-        ).pack(side=tk.LEFT, fill=tk.X, expand=True, anchor="nw")
+        )
+        lbl_msg.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, anchor="nw")
+
+        _last_w = [0]
+
+        def _sync_wrap(_evt: object = None) -> None:
+            try:
+                bw = max(1, int(box.winfo_width()))
+            except tk.TclError:
+                return
+            if bw == _last_w[0]:
+                return
+            _last_w[0] = bw
+            inner_w = max(200, bw - 24)
+            lbl_prev.configure(wraplength=inner_w)
+            lbl_curr.configure(wraplength=inner_w)
+            lbl_msg.configure(wraplength=max(160, inner_w - 28))
+
+        box.bind("<Configure>", _sync_wrap)
+        box.after_idle(lambda: _sync_wrap(None))
