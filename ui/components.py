@@ -55,6 +55,7 @@ class RoundedPanel(tk.Canvas):
             self.bind("<Configure>", self._on_self_configure)
         else:
             self._inner.bind("<Configure>", self._on_inner_configure)
+            self.bind("<Configure>", self._on_hug_canvas_configure)
 
     def body(self) -> tk.Frame:
         return self._inner
@@ -79,9 +80,19 @@ class RoundedPanel(tk.Canvas):
         if self._win_id is None:
             self._win_id = self.create_window(ins, ins, window=self._inner, anchor="nw")
         self.coords(self._win_id, ins, ins)
-        self.itemconfig(self._win_id, width=iw, height=ih)
+        if self._expand_fill:
+            self.itemconfig(self._win_id, width=iw, height=ih)
+        else:
+            self.itemconfig(self._win_id, width=iw)
 
     def _on_self_configure(self, event: tk.Event) -> None:
+        w, h = max(4, event.width), max(4, event.height)
+        if (w, h) == self._last_paint_size:
+            return
+        self._paint(w, h)
+
+    def _on_hug_canvas_configure(self, event: tk.Event) -> None:
+        """Repaint when pack changes the canvas width (expand_fill=False only)."""
         w, h = max(4, event.width), max(4, event.height)
         if (w, h) == self._last_paint_size:
             return
@@ -97,20 +108,14 @@ class RoundedPanel(tk.Canvas):
 
     def _deferred_hug(self) -> None:
         self._hug_after_id = None
-        try:
-            mw = int(self.master.winfo_width())
-        except tk.TclError:
-            mw = 0
+        self.update_idletasks()
         iw = self._inner.winfo_reqwidth()
         ih = self._inner.winfo_reqheight()
         ins = self._inset
-        w = max(iw + 2 * ins, mw - 8) if mw > 24 else iw + 2 * ins
-        h = ih + 2 * ins
-        w = max(w, 40)
-        h = max(h, 28)
+        w = max(40, iw + 2 * ins)
+        h = max(28, ih + 2 * ins)
         if (w, h) != self._last_paint_size:
             self.configure(width=w, height=h)
-            self._paint(w, h)
 
 
 class PillButton(tk.Canvas):

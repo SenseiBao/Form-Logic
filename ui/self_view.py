@@ -10,7 +10,7 @@ from lift_tracker.profile import GOAL_CHOICES, TrainingGoal, UserProfile
 from ui import theme
 from ui.components import RoundedPanel, ScrollableFrame
 from ui.paths import HISTORY_JSON
-from ui.profile_store import load_profile, load_weight_log
+from ui.profile_store import load_profile, load_weight_log, log_weight
 
 
 _EXERCISE_LABELS: Dict[str, str] = {
@@ -327,16 +327,70 @@ class SelfView(tk.Frame):
             for w in self._weight_container.winfo_children():
                 w.destroy()
             self._weight_tip_labels = []
+        self._profile_panel.after_idle(self._profile_panel.fit_hug)
+
+    def _repopulate_weight(self) -> None:
+        """Refresh the weight history section after a new entry is logged."""
+        if self._weight_container is None:
+            return
+        for w in self._weight_container.winfo_children():
+            w.destroy()
+        self._weight_tip_labels = []
+        self._populate_weight_history(self._weight_container)
+        self._profile_panel.after_idle(self._profile_panel.fit_hug)
 
     def _populate_weight_history(self, parent: tk.Frame) -> None:
         entries = load_weight_log()
         profile = load_profile()
         goal = profile.goal if profile else None
 
+        # Quick-log row
+        log_row = tk.Frame(parent, bg=theme.CARD_WHITE)
+        log_row.pack(fill=tk.X, pady=(0, 10))
+        tk.Label(
+            log_row, text="Log today's weight (lbs):",
+            font=theme.FONT_SMALL, fg=theme.TEXT_PRIMARY, bg=theme.CARD_WHITE, anchor="w",
+        ).pack(side=tk.LEFT)
+        wt_var = tk.StringVar()
+        if profile and profile.weight_kg is not None:
+            from lift_tracker.profile import kg_to_lbs
+            cur = kg_to_lbs(profile.weight_kg)
+            if cur is not None:
+                wt_var.set(str(cur))
+        wt_entry = tk.Entry(
+            log_row, textvariable=wt_var, font=theme.FONT_SMALL,
+            width=8, relief="solid", bd=1,
+            highlightthickness=1, highlightbackground=theme.CARD_BORDER,
+            highlightcolor=theme.ACCENT_NAV_ACTIVE,
+        )
+        wt_entry.pack(side=tk.LEFT, padx=(8, 6), ipady=2)
+
+        def _do_log() -> None:
+            s = wt_var.get().strip()
+            if not s:
+                return
+            try:
+                lbs = float(s.replace(",", "."))
+            except ValueError:
+                return
+            from lift_tracker.profile import lbs_to_kg
+            kg = lbs_to_kg(lbs)
+            if kg is not None and kg > 0:
+                log_weight(kg)
+                self._repopulate_weight()
+
+        tk.Button(
+            log_row, text="Log", font=theme.FONT_SMALL,
+            command=_do_log, relief="flat", cursor="hand2",
+            bg=theme.ACCENT_NAV_ACTIVE, fg="#FFFFFF",
+            activebackground="#6D28D9", activeforeground="#FFFFFF",
+            padx=10, pady=2,
+        ).pack(side=tk.LEFT)
+
         if not entries:
             lbl = tk.Label(
                 parent,
-                text="No weight entries yet. Update your weight in Settings to start tracking.",
+                text="No weight entries yet — use the field above to start logging.",
                 font=theme.FONT_SMALL,
                 fg=theme.TEXT_MUTED,
                 bg=theme.CARD_WHITE,
@@ -346,6 +400,9 @@ class SelfView(tk.Frame):
             lbl.pack(anchor="w", pady=4)
             self._weight_tip_labels.append(lbl)
             return
+
+        # Chart (needs >= 2 distinct days)
+        self._build_weight_chart(parent, entries)
 
         # Header row
         hdr = tk.Frame(parent, bg=theme.CARD_WHITE)
@@ -390,6 +447,121 @@ class SelfView(tk.Frame):
                 )
                 lbl.pack(side=tk.LEFT, fill=tk.X, expand=True, anchor="nw")
                 self._weight_tip_labels.append(lbl)
+
+    # ── Weight chart ──────────────────────────────────────────────────────────
+
+    def _build_weight_chart(
+        self, parent: tk.Frame, entries: List[Dict[str, Any]]
+    ) -> None:
+        sorted_ents = sorted(entries, key=lambda e: e.get("timestamp", ""))
+
+        by_day: Dict[str, float] = {}
+        for e in sorted_ents:
+            day = e.get("timestamp", "")[:10]
+            kg = e.get("weight_kg", 0.0)
+            by_day[day] = kg * 2.20462
+
+        days = sorted(by_day.keys())
+        weights = [by_day[d] for d in days]
+        if len(days) < 2:
+            return
+
+        CHART_H = 160
+        PAD_L, PAD_R, PAD_T, PAD_B = 52, 16, 14, 28
+        FILL_COLOR = "#EDE9FE"
+        LINE_COLOR = theme.ACCENT_PURPLE
+        DOT_R = 3.5
+
+        tk.Label(
+            parent, text="Weight Trend", font=theme.FONT_SUB,
+            fg=theme.TEXT_PRIMARY, bg=theme.CARD_WHITE, anchor="w",
+        ).pack(anchor="w", pady=(0, 4))
+
+        canvas = tk.Canvas(
+            parent, height=CHART_H, bg=theme.CARD_WHITE,
+            highlightthickness=0, bd=0,
+        )
+        canvas.pack(fill=tk.X, pady=(0, 10))
+
+        min_w = min(weights) - 1
+        max_w = max(weights) + 1
+        if max_w <= min_w:
+            max_w = min_w + 2
+        w_range = max_w - min_w
+
+        def _draw(_evt: object = None) -> None:
+            canvas.delete("all")
+            cw = max(200, canvas.winfo_width())
+            plot_w = cw - PAD_L - PAD_R
+            plot_h = CHART_H - PAD_T - PAD_B
+
+            def _px(i: int, w: float) -> tuple:
+                x = PAD_L + (i / max(1, len(days) - 1)) * plot_w
+                y = PAD_T + (1.0 - (w - min_w) / w_range) * plot_h
+                return x, y
+
+            n_grid = 4
+            for gi in range(n_grid + 1):
+                gy = PAD_T + gi * plot_h / n_grid
+                gw = min_w + (1 - gi / n_grid) * w_range
+                canvas.create_line(
+                    PAD_L, gy, cw - PAD_R, gy,
+                    fill=theme.CARD_BORDER, dash=(2, 4),
+                )
+                canvas.create_text(
+                    PAD_L - 6, gy, text=f"{gw:.0f}",
+                    anchor="e", font=("Helvetica", 9), fill=theme.TEXT_MUTED,
+                )
+
+            pts = [_px(i, w) for i, w in enumerate(weights)]
+
+            poly_coords: list = []
+            for p in pts:
+                poly_coords.extend(p)
+            poly_coords.extend([pts[-1][0], PAD_T + plot_h])
+            poly_coords.extend([pts[0][0], PAD_T + plot_h])
+            canvas.create_polygon(poly_coords, fill=FILL_COLOR, outline="")
+
+            line_coords: list = []
+            for p in pts:
+                line_coords.extend(p)
+            canvas.create_line(
+                *line_coords, fill=LINE_COLOR, width=2, smooth=True, capstyle="round",
+            )
+
+            for x, y in pts:
+                canvas.create_oval(
+                    x - DOT_R, y - DOT_R, x + DOT_R, y + DOT_R,
+                    fill=LINE_COLOR, outline=theme.CARD_WHITE, width=1.5,
+                )
+
+            max_labels = min(6, len(days))
+            step = max(1, (len(days) - 1) // (max_labels - 1)) if max_labels > 1 else 1
+            label_indices = list(range(0, len(days), step))
+            if (len(days) - 1) not in label_indices:
+                label_indices.append(len(days) - 1)
+            for i in label_indices:
+                x, _ = _px(i, weights[i])
+                try:
+                    dl = datetime.strptime(days[i], "%Y-%m-%d").strftime("%b %d")
+                except ValueError:
+                    dl = days[i]
+                canvas.create_text(
+                    x, CHART_H - 4, text=dl, anchor="s",
+                    font=("Helvetica", 9), fill=theme.TEXT_MUTED,
+                )
+
+        _last_cw: list = [0]
+
+        def _on_cfg(_evt: object = None) -> None:
+            cw = canvas.winfo_width()
+            if cw == _last_cw[0]:
+                return
+            _last_cw[0] = cw
+            _draw()
+
+        canvas.bind("<Configure>", _on_cfg)
+        canvas.after_idle(_draw)
 
     # ── Lift progress card ────────────────────────────────────────────────────
 

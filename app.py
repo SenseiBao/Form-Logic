@@ -200,10 +200,8 @@ class FormLogicApp:
         self._show_tab(tab)
 
     def _on_settings_save(self, profile: UserProfile) -> None:
-        old = load_profile()
-        old_kg = old.weight_kg if old else None
         save_profile(profile)
-        if profile.weight_kg is not None and profile.weight_kg != old_kg:
+        if profile.weight_kg is not None:
             log_weight(profile.weight_kg)
         self._home.set_first_name(profile.first_name)
 
