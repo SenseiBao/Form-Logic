@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import json
 import tkinter as tk
+from datetime import datetime
 from tkinter import ttk
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ui import theme
-from ui.components import GradientPillButton, RoundedPanel
+from ui.components import GradientPillButton, RoundedPanel, ScrollableFrame
 from ui.paths import HISTORY_JSON
 
 
@@ -91,27 +92,17 @@ class HomeView(tk.Frame):
         stats_card.grid(row=1, column=1, sticky="nsew", padx=(10, 0), pady=(6, 2))
 
         self._build_workout_card(left_card.body())
-        self._build_today_card(today_card.body())
+        self._build_feedback_card(today_card.body())
         self._build_stats_card(stats_card.body())
 
     def _on_home_configure(self, event: tk.Event) -> None:
-        if event.widget is not self:
-            return
-        w = event.width
-        if w < 100:
-            return
-        col = max(180, (w - 120) // 2)
-        wrap = max(160, col - 48)
-        if hasattr(self, "_today_body"):
-            self._today_body.config(wraplength=wrap)
+        pass  # dynamic wraplength no longer needed
 
     def set_first_name(self, name: str) -> None:
         self.user_name = name.strip() or "there"
         self._refresh_greeting()
 
     def _refresh_greeting(self) -> None:
-        from datetime import datetime
-
         now = datetime.now()
         self._date_lbl.config(text=now.strftime("%A, %B %d, %Y"))
         hour = now.hour
@@ -200,25 +191,105 @@ class HomeView(tk.Frame):
         )
         begin.pack()
 
-    def _build_today_card(self, f: tk.Frame) -> None:
+    def _build_feedback_card(self, f: tk.Frame) -> None:
         tk.Label(
             f,
-            text="Today's Exercise",
+            text="Today's Feedback",
             font=theme.FONT_HEADING,
             fg=theme.TEXT_PRIMARY,
             bg=theme.CARD_WHITE,
-        ).pack(anchor="w", padx=20, pady=(16, 8))
-        self._today_body = tk.Label(
-            f,
-            text="Focus on controlled tempo and full range of motion. "
-            "Side profile works best for squats and curls; back to camera for pull-ups.",
-            font=theme.FONT_SMALL,
-            fg=theme.TEXT_MUTED,
-            bg=theme.CARD_WHITE,
-            wraplength=360,
-            justify="left",
-        )
-        self._today_body.pack(anchor="w", padx=20, pady=(0, 16))
+        ).pack(anchor="w", padx=20, pady=(16, 6))
+        tk.Frame(f, bg=theme.CARD_BORDER, height=1).pack(fill=tk.X, padx=20, pady=(0, 8))
+
+        self._feedback_scroll = ScrollableFrame(f, bg=theme.CARD_WHITE)
+        self._feedback_scroll.pack(fill=tk.BOTH, expand=True, padx=14, pady=(0, 12))
+        cav = getattr(self._feedback_scroll, "_canvas", None)
+        if cav is not None:
+            for seq in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+                cav.bind(seq, self._feedback_scroll.on_mousewheel)
+        self._feedback_scroll.bind("<Configure>", self._on_feedback_resize)
+
+        self._populate_feedback()
+
+    def refresh_feedback(self) -> None:
+        if hasattr(self, "_feedback_scroll"):
+            self._populate_feedback()
+
+    def _on_feedback_resize(self, event: tk.Event) -> None:
+        wrap = max(200, event.width - 36)
+        for lbl in getattr(self, "_feedback_tip_labels", []):
+            try:
+                lbl.config(wraplength=wrap)
+            except tk.TclError:
+                pass
+
+    def _populate_feedback(self) -> None:
+        from lift_tracker.form_feedback import form_suggestions_for_set
+
+        self._feedback_tip_labels: List[tk.Label] = []
+        inner = self._feedback_scroll.body()
+        for w in inner.winfo_children():
+            w.destroy()
+
+        today_str = datetime.now().strftime("%Y-%m-%d")
+
+        try:
+            with open(HISTORY_JSON, "r", encoding="utf-8") as fh:
+                history: List[Dict[str, Any]] = json.load(fh)
+        except Exception:
+            history = []
+
+        seen: set = set()
+        tips: List[str] = []
+        for entry in history:
+            ts = str(entry.get("timestamp") or "")
+            if not ts.startswith(today_str):
+                continue
+            ex_id = str(entry.get("exercise") or "")
+            metrics = entry.get("metrics") or {}
+            for tip in form_suggestions_for_set(ex_id, metrics):
+                if tip not in seen:
+                    seen.add(tip)
+                    tips.append(tip)
+
+        card_w = self._feedback_scroll.winfo_width()
+        initial_wrap = max(300, card_w - 36) if card_w > 1 else 500
+
+        if not tips:
+            lbl = tk.Label(
+                inner,
+                text="No sessions logged today yet — complete a workout to see coaching notes here.",
+                font=theme.FONT_SMALL,
+                fg=theme.TEXT_MUTED,
+                bg=theme.CARD_WHITE,
+                wraplength=initial_wrap,
+                justify="left",
+            )
+            lbl.pack(anchor="w", padx=2, pady=4)
+            self._feedback_tip_labels.append(lbl)
+        else:
+            for tip in tips:
+                row = tk.Frame(inner, bg=theme.CARD_WHITE)
+                row.pack(fill=tk.X, pady=(0, 10))
+                tk.Label(
+                    row,
+                    text="•",
+                    font=theme.FONT_SMALL,
+                    fg=theme.ACCENT_PURPLE,
+                    bg=theme.CARD_WHITE,
+                ).pack(side=tk.LEFT, padx=(0, 6), anchor="nw")
+                lbl = tk.Label(
+                    row,
+                    text=tip,
+                    font=theme.FONT_SMALL,
+                    fg=theme.TEXT_PRIMARY,
+                    bg=theme.CARD_WHITE,
+                    wraplength=initial_wrap,
+                    justify="left",
+                    anchor="nw",
+                )
+                lbl.pack(side=tk.LEFT, fill=tk.X, expand=True, anchor="nw")
+                self._feedback_tip_labels.append(lbl)
 
     def _build_stats_card(self, f: tk.Frame) -> None:
         tk.Label(

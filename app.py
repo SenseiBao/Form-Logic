@@ -153,6 +153,7 @@ class FormLogicApp:
         self._settings.pack_forget()
         if tab == "home":
             self._home.refresh_stats()
+            self._home.refresh_feedback()
             self._home.pack(fill=tk.BOTH, expand=True)
         elif tab == "history":
             self._history.refresh()
