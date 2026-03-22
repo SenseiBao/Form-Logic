@@ -28,6 +28,8 @@ class _ConcentricSubphase(Enum):
 class SquatConfig:
     standing_angle_min_deg: float = 145.0
     bottom_angle_max_deg: float = 100.0
+    # Extra knee-angle slack so slightly shallow squats still count (enables “go deeper” feedback).
+    count_depth_lenience_deg: float = 18.0
     min_vis: float = 0.20
     require_depth: bool = True
     depth_slack_deg: float = 15.0
@@ -91,6 +93,7 @@ class SquatExercise(Exercise):
         # Arrays to hold the exact metrics per completed rep
         self._rep_durations: List[float] = []
         self._rep_depths: List[float] = []
+        self._rep_ideal_depth: List[bool] = []
 
         # --- NEW TRACKERS FOR BACK ANGLE ---
         self._current_rep_max_lean: float = 0.0
@@ -165,7 +168,7 @@ class SquatExercise(Exercise):
                 self._rep_cycle_start_t = t
                 self._current_rep_max_lean = 0.0  # Reset max lean tracker at the start of rep
         elif self._phase == SquatPhase.ECCENTRIC:
-            if ang <= deep + 8.0 and abs(dang_dt) < 40.0:
+            if ang <= deep + 16.0 and abs(dang_dt) < 40.0:
                 self._phase = SquatPhase.BOTTOM
                 self._bottom_t = t
                 self._bottom_angle = ang
@@ -181,7 +184,8 @@ class SquatExercise(Exercise):
                 self._begin_concentric(t, float(ba))
         elif self._phase == SquatPhase.CONCENTRIC:
             if ang >= stand - 4.0:
-                had_depth = self._bottom_angle is not None and self._bottom_angle <= self.cfg.bottom_angle_max_deg + 15.0
+                lim = self.cfg.bottom_angle_max_deg + 15.0 + self.cfg.count_depth_lenience_deg
+                had_depth = self._bottom_angle is not None and self._bottom_angle <= lim
                 ba = self._bottom_angle
                 self._phase = SquatPhase.STANDING
                 self._finish_concentric(t, ang)
@@ -267,12 +271,16 @@ class SquatExercise(Exercise):
             self._hist_top_slow.pop(0)
 
     def get_summary(self) -> Dict[str, Any]:
-            return {
-                "total_reps": self._rep_count,
-                "avg_rep_duration_s": round(sum(self._rep_durations) / len(self._rep_durations), 2) if self._rep_durations else 0,
-                "avg_depth_pct": round(sum(self._rep_depths) / len(self._rep_depths), 1) if self._rep_depths else 0,
-                "avg_max_lean_deg": round(sum(self._rep_max_leans) / len(self._rep_max_leans), 1) if self._rep_max_leans else 0,
-            }
+        out: Dict[str, Any] = {
+            "total_reps": self._rep_count,
+            "avg_rep_duration_s": round(sum(self._rep_durations) / len(self._rep_durations), 2) if self._rep_durations else 0,
+            "avg_depth_pct": round(sum(self._rep_depths) / len(self._rep_depths), 1) if self._rep_depths else 0,
+            "avg_max_lean_deg": round(sum(self._rep_max_leans) / len(self._rep_max_leans), 1) if self._rep_max_leans else 0,
+        }
+        if self._rep_ideal_depth:
+            deep = sum(1 for x in self._rep_ideal_depth if x)
+            out["pct_reps_deep_enough"] = round(100.0 * deep / len(self._rep_ideal_depth), 1)
+        return out
 
     def _try_count_rep(self, t: float, had_depth: bool, bottom_angle: Optional[float] = None) -> None:
         if t - self._last_rep_end_t < self.cfg.min_rep_interval_s:
@@ -288,6 +296,10 @@ class SquatExercise(Exercise):
 
         if bottom_angle is not None:
             self._rep_depths.append(self._depth_percent(bottom_angle))
+            ideal = bottom_angle <= self.cfg.bottom_angle_max_deg + 10.0
+            self._rep_ideal_depth.append(ideal)
+        else:
+            self._rep_ideal_depth.append(False)
 
         # Save the maximum lean of this completed rep
         if getattr(self, "_current_rep_max_lean", None) is not None and self._current_rep_max_lean > 0.0:

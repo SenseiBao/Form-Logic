@@ -25,7 +25,7 @@ class HomeView(tk.Frame):
         parent: tk.Misc,
         *,
         user_name: str = "there",
-        on_begin: Callable[[str, int, Optional[float]], None],
+        on_begin: Callable[[str, Optional[int], Optional[float]], None],
         bg: str = theme.APP_SURFACE,
     ) -> None:
         super().__init__(parent, bg=bg, highlightthickness=0, bd=0)
@@ -142,12 +142,24 @@ class HomeView(tk.Frame):
         ttk.Combobox(f, textvariable=self.exercise_var, values=[x[0] for x in self.EXERCISES], **combo_kw).pack(
             pady=5, padx=36, fill=tk.X
         )
-        ttk.Combobox(
+        tk.Label(
             f,
-            textvariable=self.reps_var,
-            values=[str(i) for i in range(1, 21)],
-            **combo_kw,
-        ).pack(pady=5, padx=36, fill=tk.X)
+            text="Target reps",
+            font=theme.FONT_SUB,
+            fg=theme.TEXT_PRIMARY,
+            bg=theme.CARD_WHITE,
+            anchor="w",
+        ).pack(anchor="w", padx=36, pady=(8, 4))
+        tk.Label(
+            f,
+            text="Pick a number, or “Rep counter” to count until you tap Stop.",
+            font=theme.FONT_SMALL,
+            fg=theme.TEXT_MUTED,
+            bg=theme.CARD_WHITE,
+            anchor="w",
+        ).pack(anchor="w", padx=36, pady=(0, 4))
+        rep_values = ["Rep counter (open set)"] + [str(i) for i in range(1, 21)]
+        ttk.Combobox(f, textvariable=self.reps_var, values=rep_values, **combo_kw).pack(pady=5, padx=36, fill=tk.X)
 
         tk.Label(
             f,
@@ -233,10 +245,14 @@ class HomeView(tk.Frame):
             if disp == self.exercise_var.get():
                 key = k
                 break
-        try:
-            n = int(self.reps_var.get())
-        except ValueError:
-            n = 4
+        rs = (self.reps_var.get() or "").strip()
+        if rs == "Rep counter (open set)":
+            n: Optional[int] = None
+        else:
+            try:
+                n = int(rs)
+            except ValueError:
+                n = 4
         lift = self._parse_optional_lbs(self.lift_weight_var.get())
         self._on_begin(key, n, lift)
 

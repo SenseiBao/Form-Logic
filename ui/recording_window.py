@@ -158,7 +158,7 @@ class RecordingSession(tk.Frame):
         *,
         exercise_module: Any,
         exercise_display: str,
-        target_reps: int,
+        target_reps: Optional[int],
         on_finished: LogCallback,
         lift_weight_lbs: Optional[float] = None,
         min_w: int = 960,
@@ -168,7 +168,8 @@ class RecordingSession(tk.Frame):
 
         self._exercise_module = exercise_module
         self._exercise_display = exercise_display.upper()
-        self._target_reps = max(1, int(target_reps))
+        self._count_mode = target_reps is None
+        self._target_reps: Optional[int] = None if self._count_mode else max(1, int(target_reps))
         self._lift_weight_lbs = lift_weight_lbs
         self._on_finished = on_finished
 
@@ -271,6 +272,8 @@ class RecordingSession(tk.Frame):
 
     def _maybe_start_completion(self, rep_count: int) -> None:
         if self._finishing_target or getattr(self, "_session_closed", False):
+            return
+        if self._count_mode or self._target_reps is None:
             return
         if rep_count < self._target_reps:
             return
@@ -403,10 +406,16 @@ class RecordingSession(tk.Frame):
         self._pill_ex = tk.Label(body, text="", font=theme.FONT_BODY, bg=theme.PILL_GREY, padx=12, pady=6, anchor="w")
         self._pill_ex.pack(fill=tk.X, pady=(0, 12))
 
-        self._lbl_reps = tk.Label(body, text="Reps to Go:", font=theme.FONT_BODY, bg=theme.METRICS_CARD_BG, anchor="w")
+        self._lbl_reps = tk.Label(body, text="", font=theme.FONT_BODY, bg=theme.METRICS_CARD_BG, anchor="w")
         self._lbl_reps.pack(fill=tk.X, pady=4)
         self._pill_reps = tk.Label(body, text="", font=theme.FONT_BODY, bg=theme.PILL_GREY, padx=12, pady=6, anchor="w")
         self._pill_reps.pack(fill=tk.X, pady=(0, 12))
+        if self._count_mode:
+            self._lbl_reps.config(text="Mode:")
+            self._pill_reps.config(text="Rep counter (no target)")
+        else:
+            self._lbl_reps.config(text="Reps left:")
+            self._pill_reps.config(text=str(self._target_reps))
 
         row_dur = tk.Frame(body, bg=theme.METRICS_CARD_BG)
         row_dur.pack(fill=tk.X, pady=4)
@@ -513,8 +522,11 @@ class RecordingSession(tk.Frame):
         visible = bool(m.get("visible", True))
 
         rep_count = int(carry.get("rep_count", 0))
-        left = max(0, self._target_reps - rep_count)
-        self._pill_reps.config(text=str(left))
+        if self._count_mode:
+            self._pill_reps.config(text="Rep counter (no target)")
+        elif self._target_reps is not None:
+            left = max(0, self._target_reps - rep_count)
+            self._pill_reps.config(text=str(left))
 
         avg = carry.get("average_rep_duration_s")
         if avg is not None:
@@ -667,7 +679,8 @@ class RecordingSession(tk.Frame):
                     "or close other apps using the camera."
                 )
                 err_metrics: Dict[str, Any] = {
-                    "target_reps": self._target_reps,
+                    "target_reps": 0 if self._count_mode else self._target_reps,
+                    "count_mode": self._count_mode,
                     "exercise": self._exercise_display,
                     "visible": False,
                 }
@@ -700,7 +713,8 @@ class RecordingSession(tk.Frame):
                 self._push_frame(
                     display,
                     {
-                        "target_reps": self._target_reps,
+                        "target_reps": 0 if self._count_mode else self._target_reps,
+                        "count_mode": self._count_mode,
                         "exercise": self._exercise_display,
                         "visible": True,
                     },
@@ -716,7 +730,8 @@ class RecordingSession(tk.Frame):
                 if packet.landmarks is not None:
                     draw_pose_skeleton(display, packet.landmarks)
                 m = dict(packet.exercise.metrics)
-                m["target_reps"] = self._target_reps
+                m["target_reps"] = 0 if self._count_mode else self._target_reps
+                m["count_mode"] = self._count_mode
                 m["exercise"] = self._exercise_display
                 self._push_frame(display, m)
                 time.sleep(0.001)
@@ -746,11 +761,13 @@ class RecordingSession(tk.Frame):
         m: Dict[str, Any]
         if metrics is not None:
             m = dict(metrics)
-            m.setdefault("target_reps", self._target_reps)
+            m.setdefault("target_reps", 0 if self._count_mode else self._target_reps)
+            m.setdefault("count_mode", self._count_mode)
             m.setdefault("exercise", self._exercise_display)
         else:
             m = {
-                "target_reps": self._target_reps,
+                "target_reps": 0 if self._count_mode else self._target_reps,
+                "count_mode": self._count_mode,
                 "exercise": self._exercise_display,
                 "visible": True,
             }
@@ -796,6 +813,8 @@ class RecordingSession(tk.Frame):
         }
         if self._lift_weight_lbs is not None:
             log_entry["lift_weight_lbs"] = float(self._lift_weight_lbs)
+        log_entry["count_mode"] = self._count_mode
+        log_entry["target_reps"] = None if self._count_mode else self._target_reps
         self._restore_root_chrome()
         self._on_finished(log_entry)
 

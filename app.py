@@ -191,7 +191,12 @@ class FormLogicApp:
         self._history.refresh()
         self._nav.set_active("home")
 
-    def _on_begin(self, exercise_key: str, target_reps: int, lift_weight_lbs: Optional[float] = None) -> None:
+    def _on_begin(
+        self,
+        exercise_key: str,
+        target_reps: Optional[int],
+        lift_weight_lbs: Optional[float] = None,
+    ) -> None:
         ex = make_exercise(exercise_key)
         display = EXERCISE_DISPLAY.get(exercise_key, exercise_key.upper())
         self._summary_view.pack_forget()

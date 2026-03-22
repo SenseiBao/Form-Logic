@@ -141,11 +141,15 @@ def draw_squat_hud(frame_bgr: np.ndarray, metrics: Dict[str, Any]) -> None:
     y += line_gap
     reps_to_go = metrics.get("reps_to_go")
     if reps_to_go is None:
-        target_reps = metrics.get("target_reps", 0)
-        rep_count = metrics.get("rep_count", 0)
-        reps_to_go = max(0, int(target_reps) - int(rep_count)) if target_reps else 0
+        if metrics.get("count_mode"):
+            reps_to_go = "open"
+        else:
+            target_reps = metrics.get("target_reps", 0)
+            rep_count = metrics.get("rep_count", 0)
+            reps_to_go = max(0, int(target_reps) - int(rep_count)) if target_reps else 0
 
-    _put_text(frame_bgr, "Reps to Go:", (rx, y), scale=1.15, color=text_color, thickness=2)
+    rlabel = "Mode:" if metrics.get("count_mode") else "Reps to Go:"
+    _put_text(frame_bgr, rlabel, (rx, y), scale=1.15, color=text_color, thickness=2)
     _pill(
         frame_bgr,
         str(reps_to_go),

@@ -85,6 +85,27 @@ class SessionSummaryView(tk.Frame):
         block = tk.Frame(body, bg=inner_pad, highlightthickness=0, bd=0)
         block.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
 
+        if log_entry.get("count_mode"):
+            tk.Label(
+                block,
+                text="Rep counter mode (no fixed target).",
+                font=theme.FONT_SMALL,
+                fg=theme.TEXT_MUTED,
+                bg=inner_pad,
+            ).pack(anchor="w", pady=(0, 8))
+        elif log_entry.get("target_reps") is not None:
+            tr = log_entry.get("target_reps")
+            try:
+                tk.Label(
+                    block,
+                    text=f"Target reps: {int(tr)}",
+                    font=theme.FONT_SMALL,
+                    fg=theme.TEXT_MUTED,
+                    bg=inner_pad,
+                ).pack(anchor="w", pady=(0, 8))
+            except (TypeError, ValueError):
+                pass
+
         lw = log_entry.get("lift_weight_lbs")
         if lw is not None:
             try:

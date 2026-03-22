@@ -20,11 +20,15 @@ class PullUpPhase(Enum):
 
 @dataclass
 class PullUpConfig:
-    extended_angle_min_deg: float = 140.0    # Angle of a proper dead-hang (2D pose–friendly)
+    extended_angle_min_deg: float = 132.0    # Near full hang for phase machine (lenient)
     flexed_angle_max_deg: float = 60.0       # Angle of a deep pull
 
-    # --- CHEAT DETECTOR THRESHOLDS ---
-    min_extension_for_rep_deg: float = 135.0 # MUST go down this far before pulling to count
+    # Extension at bottom before a pull counts as "started" (lenient — allows feedback on ROM)
+    min_extension_for_rep_deg: float = 120.0
+    # Stricter ROM for tagging "full dead hang" in session feedback
+    min_extension_strict_deadhang_deg: float = 135.0
+    # Normalized Y: allow chin within this much *below* the wrist line and still count a rep
+    bar_clearance_lenient_norm: float = 0.032
 
     min_vis: float = 0.20
     angle_ema_alpha: float = 0.35
@@ -39,12 +43,20 @@ class PullUpExercise(Exercise):
         self.reset()
 
     def get_summary(self) -> Dict[str, Any]:
-            return {
-                "total_reps": self._rep_count,
-                "avg_rep_duration_s": round(sum(self._rep_durations) / len(self._rep_durations), 2) if self._rep_durations else 0,
-                "avg_conc_depth_pct": round(sum(self._rep_conc_depths) / len(self._rep_conc_depths), 1) if self._rep_conc_depths else 0,
-                "avg_ecc_depth_pct": round(sum(self._rep_ecc_depths) / len(self._rep_ecc_depths), 1) if self._rep_ecc_depths else 0,
-            }
+        n = self._rep_count
+        out: Dict[str, Any] = {
+            "total_reps": n,
+            "avg_rep_duration_s": round(sum(self._rep_durations) / len(self._rep_durations), 2) if self._rep_durations else 0,
+            "avg_conc_depth_pct": round(sum(self._rep_conc_depths) / len(self._rep_conc_depths), 1) if self._rep_conc_depths else 0,
+            "avg_ecc_depth_pct": round(sum(self._rep_ecc_depths) / len(self._rep_ecc_depths), 1) if self._rep_ecc_depths else 0,
+        }
+        if self._rep_full_deadhang:
+            fh = sum(1 for x in self._rep_full_deadhang if x)
+            out["pct_reps_full_deadhang"] = round(100.0 * fh / len(self._rep_full_deadhang), 1)
+        if self._rep_chin_over_bar:
+            co = sum(1 for x in self._rep_chin_over_bar if x)
+            out["pct_reps_chin_over_bar"] = round(100.0 * co / len(self._rep_chin_over_bar), 1)
+        return out
 
     def reset(self) -> None:
         self._ema_angle: Optional[float] = None
@@ -59,7 +71,9 @@ class PullUpExercise(Exercise):
         # Cheat Detectors
         self._valid_start = True
         self._rep_counted_this_cycle = False
-        self._current_max_extension = 180.0 # Assumes you start fully extended
+        self._current_max_extension = 180.0  # Assumes you start fully extended
+        self._extension_at_pull_start: float = 180.0
+        self._best_pull_clearance: float = 999.0  # min(head_y - bar_y); lower = higher pull
         self._cheat_alert = "Ready"
 
         # Live Rep Trackers
@@ -69,6 +83,8 @@ class PullUpExercise(Exercise):
         self._rep_durations: List[float] = []
         self._rep_conc_depths: List[float] = []
         self._rep_ecc_depths: List[float] = []
+        self._rep_full_deadhang: List[bool] = []
+        self._rep_chin_over_bar: List[bool] = []
 
     def _depth_percent(self, elbow_angle_deg: float, is_eccentric: bool) -> float:
         """Calculates how far the user is into the pull or the hang."""
@@ -126,14 +142,16 @@ class PullUpExercise(Exercise):
                 self._rep_cycle_start_t = t
                 self._rep_counted_this_cycle = False
                 self._current_max_conc_depth = 0.0
-
-                # If they started pulling from a hang, it's a valid start
-                self._valid_start = True
-                self._cheat_alert = "Tracking..."
+                self._extension_at_pull_start = self._current_max_extension
+                self._best_pull_clearance = 999.0
+                self._valid_start = self._current_max_extension >= self.cfg.min_extension_for_rep_deg
+                self._cheat_alert = "Tracking..." if self._valid_start else "Extend arms more — near dead hang before pulling."
 
         elif self._phase == PullUpPhase.PULLING:
-            # Check if head went above the bar! (Y is inverted in pixels, so smaller Y means higher)
-            if head_y is not None and bar_y is not None and head_y < bar_y:
+            if head_y is not None and bar_y is not None:
+                self._best_pull_clearance = min(self._best_pull_clearance, head_y - bar_y)
+            slack = self.cfg.bar_clearance_lenient_norm
+            if head_y is not None and bar_y is not None and head_y < bar_y + slack:
                 self._phase = PullUpPhase.TOP
                 if not self._rep_counted_this_cycle:
                     self._try_count_rep(t)
@@ -142,8 +160,10 @@ class PullUpExercise(Exercise):
                 self._current_max_extension = ang
 
         elif self._phase == PullUpPhase.TOP:
+            if head_y is not None and bar_y is not None:
+                self._best_pull_clearance = min(self._best_pull_clearance, head_y - bar_y)
             # Check if they dropped below the bar
-            if (head_y is not None and bar_y is not None and head_y > bar_y + 0.02) or dang_dt > 5.0:
+            if (head_y is not None and bar_y is not None and head_y > bar_y + 0.025) or dang_dt > 5.0:
                 self._phase = PullUpPhase.LOWERING
                 self._current_max_extension = ang
 
@@ -157,6 +177,8 @@ class PullUpExercise(Exercise):
                 self._rep_cycle_start_t = t
                 self._rep_counted_this_cycle = False
                 self._current_max_conc_depth = 0.0
+                self._extension_at_pull_start = self._current_max_extension
+                self._best_pull_clearance = 999.0
 
                 # CHEAT DETECTOR: Did they drop far enough before starting this new pull?
                 if self._current_max_extension >= self.cfg.min_extension_for_rep_deg:
@@ -169,16 +191,37 @@ class PullUpExercise(Exercise):
     def _try_count_rep(self, t: float) -> None:
         if t - self._last_rep_end_t < self.cfg.min_rep_interval_s:
             return
+        if self._rep_counted_this_cycle:
+            return
+
+        if not self._valid_start:
+            self._cheat_alert = "Half Rep: Didn't start from dead hang!"
+            self._rep_counted_this_cycle = True
+            return
+
+        if self._best_pull_clearance >= 999.0:
+            self._rep_counted_this_cycle = True
+            return
+        if self._best_pull_clearance >= self.cfg.bar_clearance_lenient_norm:
+            self._cheat_alert = "Get higher — aim chin toward the bar (wrist line)."
+            self._rep_counted_this_cycle = True
+            return
 
         self._rep_counted_this_cycle = True
 
-        # CHEAT DETECTOR 2: Didn't go all the way down prior to this pull
-        if not self._valid_start:
-            self._cheat_alert = "Half Rep: Didn't start from dead hang!"
-            return
+        strict_h = float(self.cfg.min_extension_strict_deadhang_deg)
+        full_dead = self._extension_at_pull_start >= strict_h
+        chin_over = self._best_pull_clearance < 0.0
+        self._rep_full_deadhang.append(full_dead)
+        self._rep_chin_over_bar.append(chin_over)
 
-        # Good Rep!
-        self._cheat_alert = "Good Rep!"
+        if full_dead and chin_over:
+            self._cheat_alert = "Good rep!"
+        elif not full_dead:
+            self._cheat_alert = "Counted — try a fuller dead hang next rep."
+        else:
+            self._cheat_alert = "Counted — pull chin above the bar if you can."
+
         self._rep_count += 1
         self._last_rep_end_t = t
 
@@ -187,8 +230,7 @@ class PullUpExercise(Exercise):
 
         self._rep_conc_depths.append(self._current_max_conc_depth)
 
-        # The eccentric depth for this rep is based on how far down they went BEFORE pulling
-        ecc_pct = self._depth_percent(self._current_max_extension, is_eccentric=True)
+        ecc_pct = self._depth_percent(self._extension_at_pull_start, is_eccentric=True)
         self._rep_ecc_depths.append(ecc_pct)
 
     def update(self, t: float, landmarks: LandmarkFrame) -> ExerciseResult:
@@ -234,7 +276,14 @@ class PullUpExercise(Exercise):
         }
 
         if head_y is not None and bar_y is not None:
-            metrics["head_above_bar"] = "YES!" if head_y < bar_y else "No"
+            d = head_y - bar_y
+            slack = self.cfg.bar_clearance_lenient_norm
+            if d < 0:
+                metrics["head_above_bar"] = "Yes"
+            elif d < slack:
+                metrics["head_above_bar"] = "Close"
+            else:
+                metrics["head_above_bar"] = "No"
 
         if self._rep_cycle_start_t is not None:
             elapsed = round(max(0.0, t - self._rep_cycle_start_t), 2)
