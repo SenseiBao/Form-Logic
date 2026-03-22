@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 import tkinter as tk
 from tkinter import ttk
-from typing import Callable, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ui import theme
 from ui.components import GradientPillButton, RoundedPanel
+from ui.paths import HISTORY_JSON
 
 
 ExerciseChoice = Tuple[str, str]  # (display, internal key)
@@ -41,7 +43,7 @@ class HomeView(tk.Frame):
         greet_strip.pack(fill=tk.X)
 
         header = tk.Frame(greet_strip, bg=theme.HOME_GREETING_BG, highlightthickness=0, bd=0)
-        header.pack(fill=tk.X, padx=32, pady=(20, 16))
+        header.pack(fill=tk.X, padx=32, pady=(14, 12))
 
         self._date_lbl = tk.Label(
             header,
@@ -58,7 +60,7 @@ class HomeView(tk.Frame):
             bg=theme.HOME_GREETING_BG,
             anchor="w",
         )
-        self._greet_lbl.pack(anchor="w", pady=(6, 0))
+        self._greet_lbl.pack(anchor="w", pady=(4, 0))
         tk.Label(
             header,
             text="Today's a great day to get moving.",
@@ -66,7 +68,7 @@ class HomeView(tk.Frame):
             fg=theme.ACCENT_PURPLE,
             bg=theme.HOME_GREETING_BG,
             anchor="w",
-        ).pack(anchor="w", pady=(8, 0))
+        ).pack(anchor="w", pady=(4, 0))
 
         self._refresh_greeting()
 
@@ -90,7 +92,7 @@ class HomeView(tk.Frame):
 
         self._build_workout_card(left_card.body())
         self._build_today_card(today_card.body())
-        self._build_stats_placeholder(stats_card.body())
+        self._build_stats_card(stats_card.body())
 
     def _on_home_configure(self, event: tk.Event) -> None:
         if event.widget is not self:
@@ -102,8 +104,6 @@ class HomeView(tk.Frame):
         wrap = max(160, col - 48)
         if hasattr(self, "_today_body"):
             self._today_body.config(wraplength=wrap)
-        if hasattr(self, "_stats_body"):
-            self._stats_body.config(wraplength=wrap)
 
     def set_first_name(self, name: str) -> None:
         self.user_name = name.strip() or "there"
@@ -220,24 +220,110 @@ class HomeView(tk.Frame):
         )
         self._today_body.pack(anchor="w", padx=20, pady=(0, 16))
 
-    def _build_stats_placeholder(self, f: tk.Frame) -> None:
+    def _build_stats_card(self, f: tk.Frame) -> None:
         tk.Label(
             f,
             text="Your stats",
             font=theme.FONT_HEADING,
             fg=theme.TEXT_PRIMARY,
             bg=theme.CARD_WHITE,
-        ).pack(anchor="w", padx=20, pady=(16, 8))
-        self._stats_body = tk.Label(
-            f,
-            text="Recovery and workout rings will live here soon.",
-            font=theme.FONT_SMALL,
-            fg=theme.TEXT_MUTED,
-            bg=theme.CARD_WHITE,
-            wraplength=360,
-            justify="left",
-        )
-        self._stats_body.pack(anchor="w", padx=20, pady=(0, 18))
+        ).pack(anchor="w", padx=20, pady=(16, 6))
+        tk.Frame(f, bg=theme.CARD_BORDER, height=1).pack(fill=tk.X, padx=20, pady=(0, 10))
+        self._stats_content = tk.Frame(f, bg=theme.CARD_WHITE)
+        self._stats_content.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 14))
+        self._populate_stats()
+
+    def refresh_stats(self) -> None:
+        if hasattr(self, "_stats_content"):
+            self._populate_stats()
+
+    def _populate_stats(self) -> None:
+        for w in self._stats_content.winfo_children():
+            w.destroy()
+
+        bests = self._compute_best_lifts()
+        rows: List[Tuple[str, str]] = [
+            ("squat", "Squat"),
+            ("bicep_curl", "Bicep Curl"),
+            ("pullup", "Pull-up"),
+        ]
+        for ex_key, ex_name in rows:
+            best = bests.get(ex_key)
+            row = tk.Frame(self._stats_content, bg=theme.CARD_WHITE)
+            row.pack(fill=tk.X, pady=(0, 7))
+            tk.Label(
+                row,
+                text=ex_name,
+                font=theme.FONT_BODY,
+                fg=theme.TEXT_PRIMARY,
+                bg=theme.CARD_WHITE,
+                anchor="w",
+                width=11,
+            ).pack(side=tk.LEFT)
+            tk.Label(
+                row,
+                text=self._format_best_lift(best),
+                font=theme.FONT_SMALL,
+                fg=theme.TEXT_MUTED if best is None else theme.TEXT_PRIMARY,
+                bg=theme.CARD_WHITE,
+                anchor="w",
+            ).pack(side=tk.LEFT, padx=(6, 0))
+
+    @staticmethod
+    def _compute_best_lifts() -> Dict[str, Dict[str, Any]]:
+        """
+        Reads history.json and returns the best session per exercise.
+        Comparison uses estimated 1RM (Epley: weight × (1 + reps/30)) when weight
+        is recorded, or raw rep count when no load is logged.
+        """
+        try:
+            with open(HISTORY_JSON, "r", encoding="utf-8") as fh:
+                history: List[Dict[str, Any]] = json.load(fh)
+        except Exception:
+            return {}
+
+        bests: Dict[str, Dict[str, Any]] = {}
+        for entry in history:
+            ex = str(entry.get("exercise") or "")
+            if ex not in ("squat", "bicep_curl", "pullup"):
+                continue
+            metrics = entry.get("metrics") or {}
+            reps = int(metrics.get("total_reps") or 0)
+            if reps <= 0:
+                continue
+
+            raw_weight = entry.get("lift_weight_lbs")
+            weight: Optional[float] = float(raw_weight) if raw_weight else None
+            one_rm: Optional[float] = weight * (1.0 + reps / 30.0) if weight else None
+
+            candidate = {"weight": weight, "reps": reps, "one_rm": one_rm}
+            if ex not in bests:
+                bests[ex] = candidate
+            else:
+                prev = bests[ex]
+                # Prefer whichever has a higher 1RM; fall back to reps when no weight recorded.
+                if one_rm is not None and prev["one_rm"] is not None:
+                    if one_rm > prev["one_rm"]:
+                        bests[ex] = candidate
+                elif one_rm is not None and prev["one_rm"] is None:
+                    bests[ex] = candidate
+                elif one_rm is None and prev["one_rm"] is None:
+                    if reps > prev["reps"]:
+                        bests[ex] = candidate
+        return bests
+
+    @staticmethod
+    def _format_best_lift(best: Optional[Dict[str, Any]]) -> str:
+        if best is None:
+            return "—"
+        w = best["weight"]
+        r = best["reps"]
+        rm = best["one_rm"]
+        if w is not None and rm is not None:
+            w_str = str(int(round(w)))
+            rm_str = str(int(round(rm)))
+            return f"{w_str} lb × {r} reps  ·  est. 1RM {rm_str} lb"
+        return f"{r} reps  (bodyweight)"
 
     def _handle_begin(self) -> None:
         key = "squat"

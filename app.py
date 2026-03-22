@@ -72,11 +72,11 @@ class FormLogicApp:
         self.root = root
         root.title("Form-Logic Tracker")
         root.configure(bg=self.BG)
-        root.minsize(960, 640)
-        root.geometry("1000x720")
+        root.minsize(900, 600)
+        root.geometry("1180x760")
 
         self._grad_photo = None
-        self._strip_h = 248
+        self._strip_h = 100
         self._grad_canvas = tk.Canvas(root, height=self._strip_h, highlightthickness=0, bd=0, bg=self.BG)
         self._grad_canvas.pack(fill=tk.X)
         self._grad_canvas.bind("<Configure>", self._paint_gradient_strip)
@@ -84,6 +84,11 @@ class FormLogicApp:
 
         self._shell = tk.Frame(root, bg=self.BG, highlightthickness=0, bd=0)
         self._shell.pack(fill=tk.BOTH, expand=True)
+
+        # Nav must be packed BEFORE content so it claims space from the bottom
+        # before content's expand=True absorbs everything.
+        self._nav = BottomNav(self._shell, self._on_tab, bg=theme.NAV_DOCK_BG)
+        self._nav.pack(side=tk.BOTTOM, fill=tk.X)
 
         self._content = tk.Frame(self._shell, bg=self.BG, highlightthickness=0, bd=0)
         self._content.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
@@ -98,9 +103,6 @@ class FormLogicApp:
             on_reset=self._on_settings_reset,
         )
         self._summary_view = SessionSummaryView(self._content, bg=self.BG)
-
-        self._nav = BottomNav(self._shell, self._on_tab, bg=theme.NAV_DOCK_BG)
-        self._nav.pack(side=tk.BOTTOM, fill=tk.X, pady=(0, 20))
 
         self._current_tab: TabId = "home"
         self._recording: Optional[RecordingSession] = None
@@ -150,6 +152,7 @@ class FormLogicApp:
         self._self.pack_forget()
         self._settings.pack_forget()
         if tab == "home":
+            self._home.refresh_stats()
             self._home.pack(fill=tk.BOTH, expand=True)
         elif tab == "history":
             self._history.refresh()
@@ -216,7 +219,7 @@ class FormLogicApp:
         self._recording.pack(fill=tk.BOTH, expand=True)
 
     def _dock_nav(self) -> None:
-        self._nav.pack(side=tk.BOTTOM, fill=tk.X, pady=(0, 20))
+        self._nav.pack(side=tk.BOTTOM, fill=tk.X)
 
     def _present_session_summary(self, log_entry: Dict[str, Any], *, on_done: Callable[[], None]) -> None:
         self._nav.pack_forget()

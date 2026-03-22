@@ -75,5 +75,21 @@
         "count_mode": false,
         "target_reps": 4,
         "id": "d690acb7-8d03-4eaa-a290-07b520b7bb89"
+    },
+    {
+        "timestamp": "2026-03-22 02:01:10",
+        "exercise": "squat",
+        "exercise_display": "SQUAT",
+        "metrics": {
+            "total_reps": 6,
+            "avg_rep_duration_s": 0.87,
+            "avg_depth_pct": 92.9,
+            "avg_max_lean_deg": 34.4,
+            "pct_reps_deep_enough": 100.0
+        },
+        "lift_weight_lbs": 255.0,
+        "count_mode": false,
+        "target_reps": 4,
+        "id": "0b10a0a5-9ad0-475f-8e7e-f779fad8dfe3"
     }
 ]

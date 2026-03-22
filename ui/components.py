@@ -237,8 +237,8 @@ class BottomNav(tk.Frame):
         self._active: TabId = "home"
         self._outer_bg = bg
 
-        holder = tk.Frame(self, bg=bg, highlightthickness=0, bd=0, height=92)
-        holder.pack(fill=tk.X, pady=(4, 18))
+        holder = tk.Frame(self, bg=bg, highlightthickness=0, bd=0, height=62)
+        holder.pack(fill=tk.X, pady=(4, 10))
         holder.pack_propagate(False)
 
         self._deck = RoundedPanel(
