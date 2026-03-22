@@ -21,7 +21,7 @@ from ui.session_summary_view import SessionSummaryView
 from ui.home_view import HomeView
 from ui.onboarding_dialog import OnboardingDialog
 from ui.paths import HISTORY_JSON
-from ui.profile_store import clear_profile_and_history, load_profile, needs_onboarding, save_profile
+from ui.profile_store import clear_profile_and_history, load_profile, log_weight, needs_onboarding, save_profile
 from ui.recording_window import RecordingSession
 from ui.self_view import SelfView
 from ui.settings_view import SettingsView
@@ -159,6 +159,7 @@ class FormLogicApp:
             self._history.refresh()
             self._history.pack(fill=tk.BOTH, expand=True)
         elif tab == "self":
+            self._self.refresh()
             self._self.pack(fill=tk.BOTH, expand=True)
         else:
             self._settings.refresh_from_profile()
@@ -169,7 +170,11 @@ class FormLogicApp:
         self._show_tab(tab)
 
     def _on_settings_save(self, profile: UserProfile) -> None:
+        old = load_profile()
+        old_kg = old.weight_kg if old else None
         save_profile(profile)
+        if profile.weight_kg is not None and profile.weight_kg != old_kg:
+            log_weight(profile.weight_kg)
         self._home.set_first_name(profile.first_name)
 
     def _on_settings_reset(self) -> None:
@@ -181,7 +186,13 @@ class FormLogicApp:
         ):
             return
         clear_profile_and_history()
-        dlg = OnboardingDialog(self.root, on_saved=save_profile)
+
+        def _on_reset_saved(p: UserProfile) -> None:
+            save_profile(p)
+            if p.weight_kg is not None:
+                log_weight(p.weight_kg)
+
+        dlg = OnboardingDialog(self.root, on_saved=_on_reset_saved)
         if dlg.cancelled:
             try:
                 self.root.destroy()
@@ -270,7 +281,12 @@ def main() -> None:
 
     profile = load_profile()
     if needs_onboarding(profile):
-        dlg = OnboardingDialog(root, on_saved=save_profile)
+        def _on_initial_saved(p: UserProfile) -> None:
+            save_profile(p)
+            if p.weight_kg is not None:
+                log_weight(p.weight_kg)
+
+        dlg = OnboardingDialog(root, on_saved=_on_initial_saved)
         if dlg.cancelled:
             try:
                 root.destroy()

@@ -28,8 +28,8 @@ class OnboardingDialog:
         self._top.transient(parent)
         self._top.grab_set()
         self._top.resizable(True, True)
-        self._top.minsize(400, 480)
-        self._top.geometry("520x680")
+        self._top.minsize(560, 580)
+        self._top.geometry("680x780")
 
         root = tk.Frame(self._top, highlightthickness=0, bd=0)
         root.pack(fill=tk.BOTH, expand=True)

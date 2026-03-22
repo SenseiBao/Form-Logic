@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
-from typing import Optional
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 from lift_tracker.profile import UserProfile
-from ui.paths import HISTORY_JSON, PROFILE_JSON
+from ui.paths import HISTORY_JSON, PROFILE_JSON, WEIGHT_LOG_JSON
 
 
 def load_profile() -> Optional[UserProfile]:
@@ -28,6 +29,30 @@ def save_profile(profile: UserProfile) -> None:
         pass
 
 
+def load_weight_log() -> List[Dict[str, Any]]:
+    if not WEIGHT_LOG_JSON.exists():
+        return []
+    try:
+        with open(WEIGHT_LOG_JSON, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, list) else []
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def log_weight(weight_kg: float) -> None:
+    entries = load_weight_log()
+    entries.append({
+        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "weight_kg": weight_kg,
+    })
+    try:
+        with open(WEIGHT_LOG_JSON, "w", encoding="utf-8") as f:
+            json.dump(entries, f, indent=2)
+    except OSError:
+        pass
+
+
 def needs_onboarding(profile: Optional[UserProfile]) -> bool:
     if profile is None:
         return True
@@ -35,11 +60,12 @@ def needs_onboarding(profile: Optional[UserProfile]) -> bool:
 
 
 def clear_profile_and_history() -> None:
-    """Remove saved profile and empty workout history (for reset)."""
-    try:
-        PROFILE_JSON.unlink(missing_ok=True)
-    except OSError:
-        pass
+    """Remove saved profile, weight log, and empty workout history (for reset)."""
+    for path in (PROFILE_JSON, WEIGHT_LOG_JSON):
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
     try:
         with open(HISTORY_JSON, "w", encoding="utf-8") as f:
             f.write("[]")
