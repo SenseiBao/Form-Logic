@@ -8,5 +8,191 @@
             "avg_depth_pct": 100.0,
             "avg_max_lean_deg": 35.5
         }
+    },
+    {
+        "timestamp": "2026-03-21 21:27:39",
+        "exercise": "bicep_curl",
+        "metrics": {
+            "total_reps": 0,
+            "avg_rep_duration_s": 0,
+            "avg_conc_depth_pct": 0,
+            "avg_ecc_depth_pct": 0,
+            "avg_max_lean_deg": 0
+        }
+    },
+    {
+        "timestamp": "2026-03-21 21:32:07",
+        "exercise": "squat",
+        "metrics": {
+            "total_reps": 0,
+            "avg_rep_duration_s": 0,
+            "avg_depth_pct": 0,
+            "avg_max_lean_deg": 0
+        }
+    },
+    {
+        "timestamp": "2026-03-21 21:32:29",
+        "exercise": "bicep_curl",
+        "metrics": {
+            "total_reps": 4,
+            "avg_rep_duration_s": 1.18,
+            "avg_conc_depth_pct": 100.0,
+            "avg_ecc_depth_pct": 76.6,
+            "avg_max_lean_deg": 7.9
+        }
+    },
+    {
+        "timestamp": "2026-03-21 21:33:06",
+        "exercise": "bicep_curl",
+        "metrics": {
+            "total_reps": 5,
+            "avg_rep_duration_s": 1.61,
+            "avg_conc_depth_pct": 100.0,
+            "avg_ecc_depth_pct": 72.5,
+            "avg_max_lean_deg": 5.5
+        }
+    },
+    {
+        "timestamp": "2026-03-21 21:34:12",
+        "exercise": "squat",
+        "metrics": {
+            "total_reps": 0,
+            "avg_rep_duration_s": 0,
+            "avg_depth_pct": 0,
+            "avg_max_lean_deg": 0
+        }
+    },
+    {
+        "timestamp": "2026-03-21 21:46:06",
+        "exercise": "bicep_curl",
+        "metrics": {
+            "total_reps": 7,
+            "avg_rep_duration_s": 2.42,
+            "avg_conc_depth_pct": 100.0,
+            "avg_ecc_depth_pct": 69.0,
+            "avg_max_lean_deg": 17.6
+        }
+    },
+    {
+        "timestamp": "2026-03-21 21:48:16",
+        "exercise": "squat",
+        "metrics": {
+            "total_reps": 4,
+            "avg_rep_duration_s": 3.52,
+            "avg_depth_pct": 100.0,
+            "avg_max_lean_deg": 21.0
+        }
+    },
+    {
+        "timestamp": "2026-03-21 21:55:24",
+        "exercise": "squat",
+        "metrics": {
+            "total_reps": 4,
+            "avg_rep_duration_s": 1.68,
+            "avg_depth_pct": 95.7,
+            "avg_max_lean_deg": 28.1
+        }
+    },
+    {
+        "timestamp": "2026-03-21 22:04:27",
+        "exercise": "squat",
+        "metrics": {
+            "total_reps": 0,
+            "avg_rep_duration_s": 0,
+            "avg_depth_pct": 0,
+            "avg_max_lean_deg": 0
+        }
+    },
+    {
+        "timestamp": "2026-03-21 22:04:35",
+        "exercise": "pullup",
+        "metrics": {
+            "total_reps": 0,
+            "avg_rep_duration_s": 0,
+            "avg_conc_depth_pct": 0,
+            "avg_ecc_depth_pct": 0
+        }
+    },
+    {
+        "timestamp": "2026-03-21 22:04:39",
+        "exercise": "bicep_curl",
+        "metrics": {
+            "total_reps": 0,
+            "avg_rep_duration_s": 0,
+            "avg_conc_depth_pct": 0,
+            "avg_ecc_depth_pct": 0,
+            "avg_max_lean_deg": 0
+        }
+    },
+    {
+        "timestamp": "2026-03-21 22:05:53",
+        "exercise": "squat",
+        "metrics": {
+            "total_reps": 0,
+            "avg_rep_duration_s": 0,
+            "avg_depth_pct": 0,
+            "avg_max_lean_deg": 0
+        }
+    },
+    {
+        "timestamp": "2026-03-21 22:05:57",
+        "exercise": "bicep_curl",
+        "metrics": {
+            "total_reps": 0,
+            "avg_rep_duration_s": 0,
+            "avg_conc_depth_pct": 0,
+            "avg_ecc_depth_pct": 0,
+            "avg_max_lean_deg": 0
+        }
+    },
+    {
+        "timestamp": "2026-03-21 22:06:02",
+        "exercise": "pullup",
+        "metrics": {
+            "total_reps": 0,
+            "avg_rep_duration_s": 0,
+            "avg_conc_depth_pct": 0,
+            "avg_ecc_depth_pct": 0
+        }
+    },
+    {
+        "timestamp": "2026-03-21 22:11:39",
+        "exercise": "squat",
+        "metrics": {
+            "total_reps": 4,
+            "avg_rep_duration_s": 1.09,
+            "avg_depth_pct": 100.0,
+            "avg_max_lean_deg": 24.3
+        }
+    },
+    {
+        "timestamp": "2026-03-21 22:15:59",
+        "exercise": "squat",
+        "metrics": {
+            "total_reps": 0,
+            "avg_rep_duration_s": 0,
+            "avg_depth_pct": 0,
+            "avg_max_lean_deg": 0
+        }
+    },
+    {
+        "timestamp": "2026-03-21 22:20:23",
+        "exercise": "squat",
+        "metrics": {
+            "total_reps": 0,
+            "avg_rep_duration_s": 0,
+            "avg_depth_pct": 0,
+            "avg_max_lean_deg": 0
+        }
+    },
+    {
+        "timestamp": "2026-03-21 22:30:59",
+        "exercise": "squat",
+        "metrics": {
+            "total_reps": 0,
+            "avg_rep_duration_s": 0,
+            "avg_depth_pct": 0,
+            "avg_max_lean_deg": 0
+        }
     }
 ]

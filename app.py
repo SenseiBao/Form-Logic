@@ -1,143 +1,161 @@
-import tkinter as tk
-from tkinter import ttk, messagebox
-import cv2
-import time
-import json
-import os
-from datetime import datetime
+from __future__ import annotations
 
-from lift_tracker.exercises.squat import SquatExercise
+import json
+import tkinter as tk
+from tkinter import ttk
+from typing import Any, Dict, Optional
+
+from PIL import ImageTk
+
 from lift_tracker.exercises.bicep_curl import BicepCurlExercise
 from lift_tracker.exercises.pullup import PullUpExercise
-from lift_tracker.pipeline import TrackingPipeline
-from lift_tracker.pose.skeleton import draw_pose_skeleton
-from lift_tracker.viz.squat_hud import draw_squat_hud
+from lift_tracker.exercises.squat import SquatExercise
 
-class FormLogicUI:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Form-Logic Tracker")
-        self.root.geometry("450x300")
-        self.root.configure(padx=20, pady=20)
+from ui.components import BottomNav, TabId
+from ui.history_view import HistoryView
+from ui.home_view import HomeView
+from ui.paths import HISTORY_JSON
+from ui.recording_window import RecordingSession
+from ui.self_view import SelfView
+from ui import theme
 
-        title = tk.Label(root, text="Form-Logic", font=("Helvetica", 24, "bold"))
-        title.pack(pady=(0, 10))
 
-        tk.Label(root, text="Select an Exercise:", font=("Helvetica", 12)).pack()
+EXERCISE_DISPLAY = {
+    "squat": "SQUAT",
+    "bicep_curl": "BICEP CURL",
+    "pullup": "PULL-UP",
+}
 
-        self.exercise_var = tk.StringVar()
-        self.dropdown = ttk.Combobox(
-            root,
-            textvariable=self.exercise_var,
-            values=["Squat (Side Profile)", "Bicep Curl (Side Profile)", "Pull-up (Back Profile)"],
-            state="readonly",
-            width=30,
-            font=("Helvetica", 12)
-        )
-        self.dropdown.current(0)
-        self.dropdown.pack(pady=10)
 
-        self.start_btn = ttk.Button(root, text="Start Workout", command=self.start_tracker)
-        self.start_btn.pack(pady=10)
+def make_exercise(key: str):
+    if key == "squat":
+        return SquatExercise()
+    if key == "bicep_curl":
+        return BicepCurlExercise()
+    if key == "pullup":
+        return PullUpExercise()
+    return SquatExercise()
 
-        # New History Button for later!
-        self.history_btn = ttk.Button(root, text="View History", command=self.view_history_stub)
-        self.history_btn.pack(pady=5)
 
-    def start_tracker(self):
-        selection = self.exercise_var.get()
-        if "Squat" in selection: active_exercise = SquatExercise()
-        elif "Bicep Curl" in selection: active_exercise = BicepCurlExercise()
-        elif "Pull-up" in selection: active_exercise = PullUpExercise()
-        else: return
-        self.run_webcam_loop(active_exercise)
-
-    def run_webcam_loop(self, exercise_module):
-        self.root.withdraw()
-        cap = cv2.VideoCapture(0)
-        pipe = TrackingPipeline(exercise_module)
-
-        # 5-second countdown
-        start_time = time.time()
-        while True:
-            ok, frame = cap.read()
-            if not ok: break
-            remaining = int(5 - (time.time() - start_time)) + 1
-            if remaining <= 0: break
-            display = frame.copy()
-            h, w, _ = display.shape
-            cv2.putText(display, str(remaining), (w//2-50, h//2+50), cv2.FONT_HERSHEY_SIMPLEX, 5, (255, 255, 255), 10, cv2.LINE_AA)
-            cv2.imshow("Form-Logic (Press 'Q' to Exit)", display)
-            if cv2.waitKey(1) & 0xFF == ord("q"):
-                cap.release(); cv2.destroyAllWindows(); self.root.deiconify(); return
-
-        # Active Tracking
+def save_log(entry: Dict[str, Any]) -> None:
+    history: list = []
+    if HISTORY_JSON.exists():
         try:
-            while cap.isOpened():
-                ok, frame = cap.read()
-                if not ok: break
-                packet = pipe.process_bgr(frame)
-                display = frame.copy()
-                if packet.landmarks is not None: draw_pose_skeleton(display, packet.landmarks)
-                draw_squat_hud(display, packet.exercise.metrics)
-                cv2.imshow("Form-Logic (Press 'Q' to Exit)", display)
-                if cv2.waitKey(1) & 0xFF == ord("q"): break
-        finally:
-            # --- NEW LOGGING LOGIC ---
-            summary = exercise_module.get_summary()
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            log_entry = {
-                "timestamp": timestamp,
-                "exercise": exercise_module.id,
-                "metrics": summary
-            }
-            self.save_log(log_entry)
-
-            cap.release()
-            pipe.close()
-            cv2.destroyAllWindows()
-            self.root.deiconify()
-
-            # Show summary window
-            self.show_summary_window(log_entry)
-
-    def save_log(self, entry):
-        filename = "history.json"
+            with open(HISTORY_JSON, "r", encoding="utf-8") as f:
+                history = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            history = []
+    if not isinstance(history, list):
         history = []
-        if os.path.exists(filename):
-            try:
-                with open(filename, 'r') as f:
-                    history = json.load(f)
-            except: pass
-        history.append(entry)
-        with open(filename, 'w') as f:
+    history.append(entry)
+    try:
+        with open(HISTORY_JSON, "w", encoding="utf-8") as f:
             json.dump(history, f, indent=4)
+    except OSError:
+        pass
 
-    def show_summary_window(self, log):
-        summary_win = tk.Toplevel(self.root)
-        summary_win.title("Workout Summary")
-        summary_win.geometry("400x400")
 
-        tk.Label(summary_win, text="Session Summary", font=("Helvetica", 16, "bold")).pack(pady=10)
-        tk.Label(summary_win, text=f"Time: {log['timestamp']}", font=("Helvetica", 10)).pack()
-        tk.Label(summary_win, text=f"Exercise: {log['exercise'].capitalize()}", font=("Helvetica", 12, "bold")).pack(pady=5)
+class FormLogicApp:
+    BG = theme.APP_SURFACE
 
-        metrics_frame = tk.Frame(summary_win)
-        metrics_frame.pack(pady=10, padx=20, fill="both")
+    def __init__(self, root: tk.Tk) -> None:
+        self.root = root
+        root.title("Form-Logic Tracker")
+        root.configure(bg=self.BG)
+        root.minsize(960, 640)
+        root.geometry("1000x720")
 
-        for key, value in log['metrics'].items():
-            readable_key = key.replace("_", " ").capitalize()
-            label_text = f"{readable_key}: {value}"
-            tk.Label(metrics_frame, text=label_text, font=("Helvetica", 11)).pack(anchor="w")
+        self._grad_photo = None
+        self._strip_h = 132
+        self._grad_canvas = tk.Canvas(root, height=self._strip_h, highlightthickness=0, bd=0, bg=self.BG)
+        self._grad_canvas.pack(fill=tk.X)
+        self._grad_canvas.bind("<Configure>", self._paint_gradient_strip)
+        self._last_grad_w = -1
 
-        ttk.Button(summary_win, text="Close", command=summary_win.destroy).pack(pady=20)
+        self._shell = tk.Frame(root, bg=self.BG, highlightthickness=0, bd=0)
+        self._shell.pack(fill=tk.BOTH, expand=True)
 
-    def view_history_stub(self):
-        messagebox.showinfo("Coming Soon", "You can view the raw 'history.json' file in your project folder now. Full history UI coming in the next update!")
+        self._content = tk.Frame(self._shell, bg=self.BG, highlightthickness=0, bd=0)
+        self._content.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
+
+        self._home = HomeView(self._content, on_begin=self._on_begin, bg=self.BG)
+        self._history = HistoryView(self._content, bg=self.BG)
+        self._self = SelfView(self._content, bg=self.BG)
+
+        self._nav = BottomNav(self._shell, self._on_tab, bg=theme.NAV_DOCK_BG)
+        self._nav.pack(side=tk.BOTTOM, fill=tk.X, pady=(0, 20))
+
+        self._current_tab: TabId = "home"
+        self._recording: Optional[RecordingSession] = None
+        self._show_tab("home")
+
+        style = ttk.Style()
+        style.theme_use("clam")
+        style.configure(
+            "TCombobox",
+            fieldbackground=theme.CARD_WHITE,
+            foreground=theme.TEXT_PRIMARY,
+            borderwidth=0,
+            relief="flat",
+        )
+
+    def _paint_gradient_strip(self, event: tk.Event) -> None:
+        w = max(2, event.width)
+        if w == self._last_grad_w:
+            return
+        self._last_grad_w = w
+        h = self._strip_h
+        img = theme.diagonal_gradient_rgba(w, h)
+        self._grad_photo = ImageTk.PhotoImage(img, master=self._grad_canvas)
+        self._grad_canvas.delete("all")
+        self._grad_canvas.create_image(0, 0, anchor="nw", image=self._grad_photo)
+        self._grad_canvas.configure(height=h)
+
+    def _show_tab(self, tab: TabId) -> None:
+        self._home.pack_forget()
+        self._history.pack_forget()
+        self._self.pack_forget()
+        if tab == "home":
+            self._home.pack(fill=tk.BOTH, expand=True)
+        elif tab == "history":
+            self._history.refresh()
+            self._history.pack(fill=tk.BOTH, expand=True)
+        else:
+            self._self.pack(fill=tk.BOTH, expand=True)
+        self._current_tab = tab
+
+    def _on_tab(self, tab: TabId) -> None:
+        self._show_tab(tab)
+
+    def _on_begin(self, exercise_key: str, target_reps: int) -> None:
+        ex = make_exercise(exercise_key)
+        display = EXERCISE_DISPLAY.get(exercise_key, exercise_key.upper())
+        self._home.pack_forget()
+        self._history.pack_forget()
+        self._self.pack_forget()
+        self._nav.pack_forget()
+        self._recording = RecordingSession(
+            self._content,
+            exercise_module=ex,
+            exercise_display=display,
+            target_reps=target_reps,
+            on_finished=self._on_session_finished,
+        )
+        self._recording.pack(fill=tk.BOTH, expand=True)
+
+    def _on_session_finished(self, log_entry: Dict[str, Any]) -> None:
+        save_log(log_entry)
+        self._recording = None
+        self._nav.pack(side=tk.BOTTOM, fill=tk.X, pady=(0, 20))
+        self._show_tab("home")
+        self._history.refresh()
+
+
+def main() -> None:
+    root = tk.Tk()
+    FormLogicApp(root)
+    root.mainloop()
+
 
 if __name__ == "__main__":
-    root = tk.Tk()
-    style = ttk.Style()
-    style.theme_use('clam')
-    app = FormLogicUI(root)
-    root.mainloop()
+    main()

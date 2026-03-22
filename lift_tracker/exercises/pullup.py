@@ -236,7 +236,9 @@ class PullUpExercise(Exercise):
             metrics["head_above_bar"] = "YES!" if head_y < bar_y else "No"
 
         if self._rep_cycle_start_t is not None:
-            metrics["rep_speed_timer_s"] = round(max(0.0, t - self._rep_cycle_start_t), 2)
+            elapsed = round(max(0.0, t - self._rep_cycle_start_t), 2)
+            metrics["rep_speed_timer_s"] = elapsed
+            metrics["live_rep_duration_s"] = elapsed
 
         if self._rep_durations:
             metrics["average_rep_duration_s"] = round(sum(self._rep_durations) / len(self._rep_durations), 2)
