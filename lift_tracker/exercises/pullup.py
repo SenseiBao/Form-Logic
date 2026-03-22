@@ -27,8 +27,13 @@ class PullUpConfig:
     min_extension_for_rep_deg: float = 120.0
     # Stricter ROM for tagging "full dead hang" in session feedback
     min_extension_strict_deadhang_deg: float = 135.0
-    # Normalized Y: allow chin within this much *below* the wrist line and still count a rep
+    # Normalized Y: allow nose within this much *below* the wrist line and still count a rep
     bar_clearance_lenient_norm: float = 0.032
+
+    # Head-clearance percentage geometry (normalized screen coords)
+    # 0% = top of head just at bar; 100% = entire head (chin) above bar.
+    head_top_to_nose_norm: float = 0.05   # vertical distance, top-of-head → nose
+    nose_to_chin_norm: float = 0.05       # vertical distance, nose → chin
 
     min_vis: float = 0.20
     angle_ema_alpha: float = 0.35
@@ -71,9 +76,10 @@ class PullUpExercise(Exercise):
         # Cheat Detectors
         self._valid_start = True
         self._rep_counted_this_cycle = False
-        self._current_max_extension = 180.0  # Assumes you start fully extended
-        self._extension_at_pull_start: float = 180.0
+        self._current_max_extension = 0.0  # Grows from pose readings; never assumed
+        self._extension_at_pull_start: float = 0.0
         self._best_pull_clearance: float = 999.0  # min(head_y - bar_y); lower = higher pull
+        self._best_pull_clearance_pct: float = 0.0  # max head-clearance % this rep
         self._cheat_alert = "Ready"
 
         # Live Rep Trackers
@@ -96,6 +102,18 @@ class PullUpExercise(Exercise):
             return float(max(0.0, min(100.0, (elbow_angle_deg - flex) / span * 100.0)))
         else:
             return float(max(0.0, min(100.0, (ext - elbow_angle_deg) / span * 100.0)))
+
+    def _head_clearance_pct(self, nose_y: float, bar_y: float) -> float:
+        """
+        Percentage of the head that has cleared the bar (wrist line).
+        0%  = top of head just at bar level (nose is head_top_to_nose_norm below bar).
+        100% = entire head above bar (chin cleared) = nose is nose_to_chin_norm above bar.
+        Screen Y increases downward, so nose_above_bar = bar_y - nose_y.
+        """
+        top_h = self.cfg.head_top_to_nose_norm
+        chin_h = self.cfg.nose_to_chin_norm
+        span = max(1e-9, top_h + chin_h)
+        return max(0.0, min(100.0, (bar_y - nose_y + top_h) / span * 100.0))
 
     def _head_and_bar(self, lm: LandmarkFrame) -> Tuple[Optional[float], Optional[float]]:
         """Calculates the Y-coordinates of the head vs the invisible line between the hands."""
@@ -144,12 +162,17 @@ class PullUpExercise(Exercise):
                 self._current_max_conc_depth = 0.0
                 self._extension_at_pull_start = self._current_max_extension
                 self._best_pull_clearance = 999.0
+                self._best_pull_clearance_pct = 0.0
                 self._valid_start = self._current_max_extension >= self.cfg.min_extension_for_rep_deg
                 self._cheat_alert = "Tracking..." if self._valid_start else "Extend arms more — near dead hang before pulling."
 
         elif self._phase == PullUpPhase.PULLING:
             if head_y is not None and bar_y is not None:
                 self._best_pull_clearance = min(self._best_pull_clearance, head_y - bar_y)
+                self._best_pull_clearance_pct = max(
+                    self._best_pull_clearance_pct,
+                    self._head_clearance_pct(head_y, bar_y),
+                )
             slack = self.cfg.bar_clearance_lenient_norm
             if head_y is not None and bar_y is not None and head_y < bar_y + slack:
                 self._phase = PullUpPhase.TOP
@@ -162,6 +185,10 @@ class PullUpExercise(Exercise):
         elif self._phase == PullUpPhase.TOP:
             if head_y is not None and bar_y is not None:
                 self._best_pull_clearance = min(self._best_pull_clearance, head_y - bar_y)
+                self._best_pull_clearance_pct = max(
+                    self._best_pull_clearance_pct,
+                    self._head_clearance_pct(head_y, bar_y),
+                )
             # Check if they dropped below the bar
             if (head_y is not None and bar_y is not None and head_y > bar_y + 0.025) or dang_dt > 5.0:
                 self._phase = PullUpPhase.LOWERING
@@ -179,6 +206,7 @@ class PullUpExercise(Exercise):
                 self._current_max_conc_depth = 0.0
                 self._extension_at_pull_start = self._current_max_extension
                 self._best_pull_clearance = 999.0
+                self._best_pull_clearance_pct = 0.0
 
                 # CHEAT DETECTOR: Did they drop far enough before starting this new pull?
                 if self._current_max_extension >= self.cfg.min_extension_for_rep_deg:
@@ -211,7 +239,7 @@ class PullUpExercise(Exercise):
 
         strict_h = float(self.cfg.min_extension_strict_deadhang_deg)
         full_dead = self._extension_at_pull_start >= strict_h
-        chin_over = self._best_pull_clearance < 0.0
+        chin_over = self._best_pull_clearance_pct >= 100.0
         self._rep_full_deadhang.append(full_dead)
         self._rep_chin_over_bar.append(chin_over)
 
@@ -276,11 +304,12 @@ class PullUpExercise(Exercise):
         }
 
         if head_y is not None and bar_y is not None:
-            d = head_y - bar_y
-            slack = self.cfg.bar_clearance_lenient_norm
-            if d < 0:
+            pct = self._head_clearance_pct(head_y, bar_y)
+            metrics["head_clearance_pct"] = round(pct, 1)
+            # Keep a categorical label for any code that still reads head_above_bar
+            if pct >= 100.0:
                 metrics["head_above_bar"] = "Yes"
-            elif d < slack:
+            elif pct > 0.0:
                 metrics["head_above_bar"] = "Close"
             else:
                 metrics["head_above_bar"] = "No"

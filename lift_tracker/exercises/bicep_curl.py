@@ -44,13 +44,17 @@ class BicepCurlExercise(Exercise):
         self.reset()
 
     def get_summary(self) -> Dict[str, Any]:
-            return {
-                "total_reps": self._rep_count,
-                "avg_rep_duration_s": round(sum(self._rep_durations) / len(self._rep_durations), 2) if self._rep_durations else 0,
-                "avg_conc_depth_pct": round(sum(self._rep_conc_depths) / len(self._rep_conc_depths), 1) if self._rep_conc_depths else 0,
-                "avg_ecc_depth_pct": round(sum(self._rep_ecc_depths) / len(self._rep_ecc_depths), 1) if self._rep_ecc_depths else 0,
-                "avg_max_lean_deg": round(sum(self._rep_max_leans) / len(self._rep_max_leans), 1) if self._rep_max_leans else 0,
-            }
+        out: Dict[str, Any] = {
+            "total_reps": self._rep_count,
+            "avg_rep_duration_s": round(sum(self._rep_durations) / len(self._rep_durations), 2) if self._rep_durations else 0,
+            "avg_conc_depth_pct": round(sum(self._rep_conc_depths) / len(self._rep_conc_depths), 1) if self._rep_conc_depths else 0,
+            "avg_ecc_depth_pct": round(sum(self._rep_ecc_depths) / len(self._rep_ecc_depths), 1) if self._rep_ecc_depths else 0,
+            "avg_max_lean_deg": round(sum(self._rep_max_leans) / len(self._rep_max_leans), 1) if self._rep_max_leans else 0,
+        }
+        if self._rep_full_extension:
+            fe = sum(1 for x in self._rep_full_extension if x)
+            out["pct_reps_full_extension"] = round(100.0 * fe / len(self._rep_full_extension), 1)
+        return out
 
     def reset(self) -> None:
         self._ema_angle: Optional[float] = None
@@ -64,7 +68,7 @@ class BicepCurlExercise(Exercise):
 
         # Live Rep Trackers
         self._current_max_conc_depth = 0.0
-        self._current_max_ecc_depth = 0.0
+        self._current_max_extension_ang: float = 0.0  # Tracked inside _update_phase before rep fires
         self._current_max_lean = 0.0
 
         # Strict angle tracker (resets to 999 every rep)
@@ -75,6 +79,7 @@ class BicepCurlExercise(Exercise):
         self._rep_conc_depths: List[float] = []
         self._rep_ecc_depths: List[float] = []
         self._rep_max_leans: List[float] = []
+        self._rep_full_extension: List[bool] = []
 
     def _conc_depth_percent(self, elbow_angle_deg: float) -> float:
         ext = float(self.cfg.extended_angle_min_deg)
@@ -141,7 +146,7 @@ class BicepCurlExercise(Exercise):
                 self._phase = CurlPhase.CONCENTRIC
                 self._rep_cycle_start_t = t
                 self._current_max_conc_depth = 0.0
-                self._current_max_ecc_depth = 0.0
+                self._current_max_extension_ang = 0.0
                 self._current_max_lean = 0.0
                 self._current_min_angle = ang
 
@@ -156,6 +161,9 @@ class BicepCurlExercise(Exercise):
                 self._phase = CurlPhase.ECCENTRIC
 
         elif self._phase == CurlPhase.ECCENTRIC:
+            # Track max extension here so the transition frame itself is included before rep fires.
+            self._current_max_extension_ang = max(self._current_max_extension_ang, ang)
+
             margin = float(self.cfg.eccentric_bottom_margin_deg)
             if ang >= ext - margin:  # Near full extension (not ext−25; that cut eccentric tracking short)
                 self._phase = CurlPhase.BOTTOM
@@ -182,8 +190,12 @@ class BicepCurlExercise(Exercise):
             self._rep_durations.append(max(0.0, t - self._rep_cycle_start_t))
 
         self._rep_conc_depths.append(self._current_max_conc_depth)
-        self._rep_ecc_depths.append(self._current_max_ecc_depth)
+        ecc_depth = self._ecc_depth_percent(self._current_max_extension_ang) if self._current_max_extension_ang > 0 else 0.0
+        self._rep_ecc_depths.append(ecc_depth)
         self._rep_max_leans.append(self._current_max_lean)
+
+        full_ext = self._current_max_extension_ang >= self.cfg.extended_angle_min_deg - 5.0
+        self._rep_full_extension.append(full_ext)
 
         self._rep_cycle_start_t = None
 
@@ -221,11 +233,9 @@ class BicepCurlExercise(Exercise):
             # Track the deepest point the arm reaches during this active rep
             self._current_min_angle = min(self._current_min_angle, sm)
 
-            # Raw angle; EMA lags. Use phase_before so the transition frame still counts (e.g. ECCENTRIC→BOTTOM).
+            # Raw angle; EMA lags. Use phase_before so the transition frame still counts.
             if phase_before in (CurlPhase.CONCENTRIC, CurlPhase.TOP):
                 self._current_max_conc_depth = max(self._current_max_conc_depth, conc_pct_track)
-            if phase_before == CurlPhase.ECCENTRIC:
-                self._current_max_ecc_depth = max(self._current_max_ecc_depth, ecc_pct_track)
             if torso_ok and torso_ang is not None:
                 self._current_max_lean = max(self._current_max_lean, torso_ang)
 

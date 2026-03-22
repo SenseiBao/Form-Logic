@@ -631,8 +631,12 @@ class RecordingSession(tk.Frame):
             if self._lbl_d1 is not None:
                 self._lbl_d1.config(text=_deg_from(m, "elbow_angle_deg"), fg=theme.TEXT_PRIMARY)
             if self._lbl_d2 is not None:
-                hab = m.get("head_above_bar")
-                self._lbl_d2.config(text=str(hab) if hab is not None else "—", fg=theme.TEXT_PRIMARY)
+                pct = m.get("head_clearance_pct")
+                if pct is not None:
+                    self._lbl_d2.config(text=f"{_fmt_num(pct)}%", fg=theme.TEXT_PRIMARY)
+                else:
+                    hab = m.get("head_above_bar")
+                    self._lbl_d2.config(text=str(hab) if hab is not None else "—", fg=theme.TEXT_PRIMARY)
             if self._lbl_d3 is not None:
                 st = m.get("cheat_alert")
                 self._lbl_d3.config(text=str(st) if st is not None else "—", fg=theme.TEXT_PRIMARY)

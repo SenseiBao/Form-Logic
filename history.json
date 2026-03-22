@@ -27,5 +27,53 @@
         "count_mode": true,
         "target_reps": null,
         "id": "501616f4-5b52-4366-9219-24c364b86839"
+    },
+    {
+        "timestamp": "2026-03-22 01:38:13",
+        "exercise": "bicep_curl",
+        "exercise_display": "BICEP CURL",
+        "metrics": {
+            "total_reps": 17,
+            "avg_rep_duration_s": 0.93,
+            "avg_conc_depth_pct": 78.6,
+            "avg_ecc_depth_pct": 88.1,
+            "avg_max_lean_deg": 9.8,
+            "pct_reps_full_extension": 5.9
+        },
+        "count_mode": true,
+        "target_reps": null,
+        "id": "449f50d8-a371-460e-9dc5-f97b43e5a276"
+    },
+    {
+        "timestamp": "2026-03-22 01:39:59",
+        "exercise": "pullup",
+        "exercise_display": "PULL-UP",
+        "metrics": {
+            "total_reps": 3,
+            "avg_rep_duration_s": 0.27,
+            "avg_conc_depth_pct": 76.0,
+            "avg_ecc_depth_pct": 100.0,
+            "pct_reps_full_deadhang": 66.7,
+            "pct_reps_chin_over_bar": 100.0
+        },
+        "count_mode": true,
+        "target_reps": null,
+        "id": "97200cb0-8d1e-4400-b061-4838583a6403"
+    },
+    {
+        "timestamp": "2026-03-22 01:47:33",
+        "exercise": "pullup",
+        "exercise_display": "PULL-UP",
+        "metrics": {
+            "total_reps": 3,
+            "avg_rep_duration_s": 0.16,
+            "avg_conc_depth_pct": 79.4,
+            "avg_ecc_depth_pct": 100.0,
+            "pct_reps_full_deadhang": 100.0,
+            "pct_reps_chin_over_bar": 100.0
+        },
+        "count_mode": false,
+        "target_reps": 4,
+        "id": "d690acb7-8d03-4eaa-a290-07b520b7bb89"
     }
 ]

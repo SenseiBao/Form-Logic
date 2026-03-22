@@ -41,6 +41,7 @@ def form_suggestions_for_set(exercise_id: str, metrics: Dict[str, Any]) -> List[
         lean = _f(metrics, "avg_max_lean_deg")
         conc = _f(metrics, "avg_conc_depth_pct")
         ecc = _f(metrics, "avg_ecc_depth_pct")
+        pct_ext = _f(metrics, "pct_reps_full_extension")
 
         if dur is not None and dur > 0 and dur < 1.4:
             tips.append(
@@ -54,7 +55,11 @@ def form_suggestions_for_set(exercise_id: str, metrics: Dict[str, Any]) -> List[
             tips.append(
                 "Concentric range looks shallow — curl through a fuller arc without hiking the shoulders."
             )
-        if ecc is not None and ecc < 62.0:
+        if pct_ext is not None and pct_ext < 70.0:
+            tips.append(
+                "Several reps didn't reach full arm extension on the way down — lower the dumbbell until your elbow is nearly straight before curling again."
+            )
+        elif ecc is not None and ecc < 75.0:
             tips.append(
                 "Resist the weight on the way down — aim for a controlled eccentric through full extension."
             )
@@ -101,13 +106,13 @@ def form_suggestions_for_set(exercise_id: str, metrics: Dict[str, Any]) -> List[
             tips.append(
                 "Chin often stayed below the imaginary bar line (between the wrists) — think about lifting the chest and clearing that line each rep."
             )
-        if conc is not None and conc < 48.0 and (pct_chin is None or pct_chin >= 60.0):
+        if conc is not None and conc < 80.0:
             tips.append(
-                "Pulling range still looks a little short on average — drive a little higher toward the bar with steady shoulders."
+                "Average pull depth looks shallow — try to drive your elbows down past 90° and pull your chest toward the bar each rep."
             )
-        if ecc is not None and ecc < 52.0:
+        if ecc is not None and ecc < 90.0:
             tips.append(
-                "Lower yourself toward a longer hang with control before starting the next pull — avoid short, bouncy reps."
+                "Average arm extension at the bottom is short of a full hang — lower until your elbows are nearly straight before starting each pull."
             )
 
     else:
