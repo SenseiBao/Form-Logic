@@ -5,7 +5,7 @@ import tkinter as tk
 from tkinter import messagebox
 from collections import defaultdict
 from datetime import datetime
-from typing import Any, DefaultDict, Dict, List
+from typing import Any, Callable, DefaultDict, Dict, List, Optional
 
 from ui import theme
 from ui.components import RoundedPanel, ScrollableFrame
@@ -77,9 +77,16 @@ def _fmt_metrics(m: Dict[str, Any]) -> str:
 
 
 class HistoryView(tk.Frame):
-    def __init__(self, parent: tk.Misc, *, bg: str = theme.APP_SURFACE) -> None:
+    def __init__(
+        self,
+        parent: tk.Misc,
+        *,
+        bg: str = theme.APP_SURFACE,
+        on_open_session: Optional[Callable[[Dict[str, Any]], None]] = None,
+    ) -> None:
         super().__init__(parent, bg=bg, highlightthickness=0, bd=0)
         self._bg = bg
+        self._on_open_session = on_open_session
 
         tk.Label(
             self,
@@ -169,25 +176,48 @@ class HistoryView(tk.Frame):
                 left = tk.Frame(row, bg=theme.CARD_WHITE, highlightthickness=0, bd=0)
                 left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
-                tk.Label(
+                def _bind_open_summary(w: tk.Misc, s: Dict[str, Any] = sess) -> None:
+                    if not self._on_open_session:
+                        return
+                    w.bind("<Button-1>", lambda _e, entry=s: self._on_open_session(entry))
+                    w.configure(cursor="hand2")
+
+                lbl_title = tk.Label(
                     left,
                     text=line,
                     font=theme.FONT_BODY,
                     fg=theme.TEXT_PRIMARY,
                     bg=theme.CARD_WHITE,
                     anchor="w",
-                ).pack(anchor="w", padx=8)
+                )
+                lbl_title.pack(anchor="w", padx=8)
+                _bind_open_summary(lbl_title)
+                _bind_open_summary(left)
                 if detail:
-                    tk.Label(
+                    lbl_det = tk.Label(
                         left,
                         text=detail,
                         font=theme.FONT_SMALL,
                         fg=theme.TEXT_MUTED,
                         bg=theme.CARD_WHITE,
                         anchor="w",
-                    ).pack(anchor="w", padx=8, pady=(2, 0))
+                    )
+                    lbl_det.pack(anchor="w", padx=8, pady=(2, 0))
+                    _bind_open_summary(lbl_det)
                 else:
                     tk.Frame(left, height=4, bg=theme.CARD_WHITE).pack()
+
+                if self._on_open_session:
+                    lbl_hint = tk.Label(
+                        left,
+                        text="Tap for session summary",
+                        font=theme.FONT_SMALL,
+                        fg=theme.ACCENT_NAV_ACTIVE,
+                        bg=theme.CARD_WHITE,
+                        anchor="w",
+                    )
+                    lbl_hint.pack(anchor="w", padx=8, pady=(2, 4))
+                    _bind_open_summary(lbl_hint)
 
                 ek = entry_key(sess)
 

@@ -5,7 +5,7 @@ import uuid
 import tkinter as tk
 from tkinter import messagebox
 from tkinter import ttk
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 from PIL import ImageTk
 
@@ -17,6 +17,7 @@ from lift_tracker.profile import UserProfile
 from ui.components import BottomNav, TabId
 from ui.dpi import apply_tk_scaling, enable_windows_dpi_awareness
 from ui.history_view import HistoryView
+from ui.session_summary_view import SessionSummaryView
 from ui.home_view import HomeView
 from ui.onboarding_dialog import OnboardingDialog
 from ui.paths import HISTORY_JSON
@@ -88,7 +89,7 @@ class FormLogicApp:
         self._content.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
 
         self._home = HomeView(self._content, user_name=first_name, on_begin=self._on_begin, bg=self.BG)
-        self._history = HistoryView(self._content, bg=self.BG)
+        self._history = HistoryView(self._content, bg=self.BG, on_open_session=self._show_session_summary)
         self._self = SelfView(self._content, bg=self.BG)
         self._settings = SettingsView(
             self._content,
@@ -96,6 +97,7 @@ class FormLogicApp:
             on_save=self._on_settings_save,
             on_reset=self._on_settings_reset,
         )
+        self._summary_view = SessionSummaryView(self._content, bg=self.BG)
 
         self._nav = BottomNav(self._shell, self._on_tab, bg=theme.NAV_DOCK_BG)
         self._nav.pack(side=tk.BOTTOM, fill=tk.X, pady=(0, 20))
@@ -142,6 +144,7 @@ class FormLogicApp:
         self._grad_canvas.configure(height=h)
 
     def _show_tab(self, tab: TabId) -> None:
+        self._summary_view.pack_forget()
         self._home.pack_forget()
         self._history.pack_forget()
         self._self.pack_forget()
@@ -191,6 +194,7 @@ class FormLogicApp:
     def _on_begin(self, exercise_key: str, target_reps: int, lift_weight_lbs: Optional[float] = None) -> None:
         ex = make_exercise(exercise_key)
         display = EXERCISE_DISPLAY.get(exercise_key, exercise_key.upper())
+        self._summary_view.pack_forget()
         self._home.pack_forget()
         self._history.pack_forget()
         self._self.pack_forget()
@@ -206,18 +210,48 @@ class FormLogicApp:
         )
         self._recording.pack(fill=tk.BOTH, expand=True)
 
+    def _dock_nav(self) -> None:
+        self._nav.pack(side=tk.BOTTOM, fill=tk.X, pady=(0, 20))
+
+    def _present_session_summary(self, log_entry: Dict[str, Any], *, on_done: Callable[[], None]) -> None:
+        self._nav.pack_forget()
+        self._home.pack_forget()
+        self._history.pack_forget()
+        self._self.pack_forget()
+        self._settings.pack_forget()
+
+        def _wrapped_done() -> None:
+            self._dock_nav()
+            on_done()
+
+        self._summary_view.present(log_entry, on_done=_wrapped_done)
+        self._summary_view.pack(fill=tk.BOTH, expand=True)
+
+    def _show_session_summary(self, log_entry: Dict[str, Any]) -> None:
+        tab_back = self._current_tab
+
+        def _done() -> None:
+            self._nav.set_active(tab_back)
+            self._show_tab(tab_back)
+
+        self._present_session_summary(log_entry, on_done=_done)
+
     def _on_session_finished(self, log_entry: Dict[str, Any]) -> None:
         self._recording = None
-        self._nav.pack(side=tk.BOTTOM, fill=tk.X, pady=(0, 20))
-        if messagebox.askyesno(
-            "Save workout?",
-            "Save this session to your history?\n\nChoose No to discard it.",
-            icon="question",
-            parent=self.root,
-        ):
-            save_log(log_entry)
-        self._show_tab("home")
-        self._history.refresh()
+
+        def _after_summary() -> None:
+            if messagebox.askyesno(
+                "Save workout?",
+                "Save this session to your history?\n\nChoose No to discard it.",
+                icon="question",
+                parent=self.root,
+            ):
+                save_log(log_entry)
+            self._nav.set_active("home")
+            self._show_tab("home")
+            self._history.refresh()
+
+        self._present_session_summary(log_entry, on_done=_after_summary)
 
 
 def main() -> None:

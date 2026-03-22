@@ -791,6 +791,7 @@ class RecordingSession(tk.Frame):
         log_entry: Dict[str, Any] = {
             "timestamp": timestamp,
             "exercise": self._exercise_module.id,
+            "exercise_display": self._exercise_display,
             "metrics": summary,
         }
         if self._lift_weight_lbs is not None:
