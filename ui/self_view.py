@@ -10,7 +10,7 @@ from lift_tracker.profile import GOAL_CHOICES, TrainingGoal, UserProfile
 from ui import theme
 from ui.components import RoundedPanel, ScrollableFrame
 from ui.paths import HISTORY_JSON
-from ui.profile_store import load_profile, load_weight_log, log_weight
+from ui.profile_store import delete_weight_entry, load_profile, load_weight_log, log_weight, save_profile
 
 
 _EXERCISE_LABELS: Dict[str, str] = {
@@ -412,15 +412,21 @@ class SelfView(tk.Frame):
             kg = lbs_to_kg(lbs)
             if kg is not None and kg > 0:
                 log_weight(kg, timestamp=ts)
+                p = load_profile()
+                if p is not None:
+                    p.weight_kg = kg
+                    save_profile(p)
                 self._repopulate_weight()
 
-        tk.Button(
+        log_lbl = tk.Label(
             log_row, text="Log", font=theme.FONT_SMALL,
-            command=_do_log, relief="flat", cursor="hand2",
-            bg=theme.ACCENT_NAV_ACTIVE, fg="#FFFFFF",
-            activebackground="#6D28D9", activeforeground="#FFFFFF",
-            padx=10, pady=2,
-        ).pack(side=tk.LEFT)
+            fg=theme.ACCENT_NAV_ACTIVE, bg=theme.CARD_WHITE,
+            cursor="hand2", padx=6,
+        )
+        log_lbl.pack(side=tk.LEFT)
+        log_lbl.bind("<Button-1>", lambda _e: _do_log())
+        log_lbl.bind("<Enter>", lambda _e: log_lbl.config(fg="#6D28D9"))
+        log_lbl.bind("<Leave>", lambda _e: log_lbl.config(fg=theme.ACCENT_NAV_ACTIVE))
 
         if not entries:
             lbl = tk.Label(
@@ -453,8 +459,9 @@ class SelfView(tk.Frame):
         tk.Label(hdr, text="Weight", font=theme.FONT_SUB, fg=theme.TEXT_MUTED,
                  bg=theme.CARD_WHITE, anchor="w").pack(side=tk.LEFT)
 
-        sorted_entries = sorted(entries, key=lambda e: e.get("timestamp", ""), reverse=True)
-        for entry in sorted_entries[:10]:
+        indexed = list(enumerate(entries))
+        indexed.sort(key=lambda t: t[1].get("timestamp", ""), reverse=True)
+        for orig_idx, entry in indexed[:10]:
             ts_str = entry.get("timestamp", "")
             try:
                 date_str = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S").strftime("%b %d, %Y")
@@ -467,6 +474,16 @@ class SelfView(tk.Frame):
                      bg=theme.CARD_WHITE, width=14, anchor="w").pack(side=tk.LEFT)
             tk.Label(row, text=f"{weight_lbs:.1f} lbs", font=theme.FONT_SMALL,
                      fg=theme.TEXT_PRIMARY, bg=theme.CARD_WHITE, anchor="w").pack(side=tk.LEFT)
+
+            def _del(idx: int = orig_idx) -> None:
+                delete_weight_entry(idx)
+                self._repopulate_weight()
+
+            tk.Label(
+                row, text="✕", font=("Helvetica", 10), fg="#DC2626",
+                bg=theme.CARD_WHITE, cursor="hand2",
+            ).pack(side=tk.RIGHT, padx=(8, 0))
+            row.winfo_children()[-1].bind("<Button-1>", lambda _e, f=_del: f())
 
         if has_chart:
             sep = tk.Frame(columns, bg=theme.CARD_BORDER, width=1)

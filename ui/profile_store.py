@@ -53,6 +53,17 @@ def log_weight(weight_kg: float, *, timestamp: Optional[str] = None) -> None:
         pass
 
 
+def delete_weight_entry(index: int) -> None:
+    entries = load_weight_log()
+    if 0 <= index < len(entries):
+        entries.pop(index)
+        try:
+            with open(WEIGHT_LOG_JSON, "w", encoding="utf-8") as f:
+                json.dump(entries, f, indent=2)
+        except OSError:
+            pass
+
+
 def needs_onboarding(profile: Optional[UserProfile]) -> bool:
     if profile is None:
         return True

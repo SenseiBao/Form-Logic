@@ -48,9 +48,11 @@ class RoundedPanel(tk.Canvas):
         self._photo: ImageTk.PhotoImage | None = None
         self._last_paint_size: Tuple[int, int] = (0, 0)
         self._hug_after_id: str | None = None
+        self._bg_id: int | None = None
         inner_hex = "#%02x%02x%02x" % fill_rgb
         self._inner = tk.Frame(self, bg=inner_hex, highlightthickness=0, bd=0)
         self._win_id: int | None = None
+        self.bind("<Map>", self._on_map)
         if expand_fill:
             self.bind("<Configure>", self._on_self_configure)
         else:
@@ -72,8 +74,10 @@ class RoundedPanel(tk.Canvas):
         fill = (*self._fill_rgb, self._fill_alpha)
         img = theme.rounded_rectangle_rgba(w, h, self._radius, fill, self._outline_rgba, 1)
         self._photo = ImageTk.PhotoImage(img, master=self)
-        self.delete("panel")
-        self.create_image(0, 0, anchor="nw", image=self._photo, tags="panel")
+        if self._bg_id is None:
+            self._bg_id = self.create_image(0, 0, anchor="nw", image=self._photo)
+        else:
+            self.itemconfig(self._bg_id, image=self._photo)
         ins = self._inset
         iw = max(1, w - 2 * ins)
         ih = max(1, h - 2 * ins)
@@ -84,6 +88,18 @@ class RoundedPanel(tk.Canvas):
             self.itemconfig(self._win_id, width=iw, height=ih)
         else:
             self.itemconfig(self._win_id, width=iw)
+
+    def _on_map(self, event: tk.Event) -> None:
+        if event.widget is not self:
+            return
+        self._last_paint_size = (0, 0)
+        self.after_idle(self._map_repaint)
+
+    def _map_repaint(self) -> None:
+        w = self.winfo_width()
+        h = self.winfo_height()
+        if w > 4 and h > 4 and (w, h) != self._last_paint_size:
+            self._paint(w, h)
 
     def _on_self_configure(self, event: tk.Event) -> None:
         w, h = max(4, event.width), max(4, event.height)

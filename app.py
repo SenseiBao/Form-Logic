@@ -197,6 +197,8 @@ class FormLogicApp:
         self._current_tab = tab
 
     def _on_tab(self, tab: TabId) -> None:
+        if tab == self._current_tab:
+            return
         self._show_tab(tab)
 
     def _on_settings_save(self, profile: UserProfile) -> None:
