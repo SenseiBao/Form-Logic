@@ -1,1 +1,28 @@
-[]
+[
+    {
+        "timestamp": "2026-03-22 00:02:35",
+        "exercise": "bicep_curl",
+        "metrics": {
+            "total_reps": 7,
+            "avg_rep_duration_s": 1.94,
+            "avg_conc_depth_pct": 100.0,
+            "avg_ecc_depth_pct": 95.4,
+            "avg_max_lean_deg": 8.9
+        },
+        "lift_weight_lbs": 15.0,
+        "id": "8dff3a15-6bdb-4b19-8012-2867abc535e9"
+    },
+    {
+        "timestamp": "2026-03-22 00:03:01",
+        "exercise": "bicep_curl",
+        "metrics": {
+            "total_reps": 3,
+            "avg_rep_duration_s": 1.84,
+            "avg_conc_depth_pct": 100.0,
+            "avg_ecc_depth_pct": 98.7,
+            "avg_max_lean_deg": 7.2
+        },
+        "lift_weight_lbs": 15.0,
+        "id": "be6d06af-40e0-4fcd-873f-79c4eefd487d"
+    }
+]

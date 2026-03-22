@@ -20,8 +20,12 @@ class CurlPhase(Enum):
 
 @dataclass
 class BicepCurlConfig:
-    extended_angle_min_deg: float = 150.0
+    # Side-camera lockout is often ~115–125° in pose; 120 maps full extension to ~100% eccentric.
+    extended_angle_min_deg: float = 120.0
     flexed_angle_max_deg: float = 55.0
+    # Smoothed elbow must reach ext − margin before leaving ECCENTRIC (rep ends here).
+    # Old hard-coded 25° fired too early (~95°) so the last part of the lowering was BOTTOM and eccentric % capped.
+    eccentric_bottom_margin_deg: float = 10.0
 
     # --- STRICT REP COUNTER ---
     # The elbow MUST bend past this 90-degree mark for the rep to count
@@ -152,7 +156,8 @@ class BicepCurlExercise(Exercise):
                 self._phase = CurlPhase.ECCENTRIC
 
         elif self._phase == CurlPhase.ECCENTRIC:
-            if ang >= ext - 25.0:  # Returned to the bottom
+            margin = float(self.cfg.eccentric_bottom_margin_deg)
+            if ang >= ext - margin:  # Near full extension (not ext−25; that cut eccentric tracking short)
                 self._phase = CurlPhase.BOTTOM
                 # Check if the arm bent far enough to count!
                 had_depth = self._current_min_angle <= self.cfg.min_flexion_for_rep_deg
@@ -203,18 +208,24 @@ class BicepCurlExercise(Exercise):
             self._ema_angle = a * ang + (1.0 - a) * self._ema_angle
         sm = float(self._ema_angle)
 
+        phase_before = self._phase
         self._update_phase(t, sm, raw_dang)
 
         conc_pct = self._conc_depth_percent(sm)
         ecc_pct = self._ecc_depth_percent(sm)
+        conc_pct_track = self._conc_depth_percent(ang)
+        ecc_pct_track = self._ecc_depth_percent(ang)
         torso_ang, torso_ok = self._torso_angle(landmarks)
 
         if self._rep_cycle_start_t is not None:
             # Track the deepest point the arm reaches during this active rep
             self._current_min_angle = min(self._current_min_angle, sm)
 
-            self._current_max_conc_depth = max(self._current_max_conc_depth, conc_pct)
-            self._current_max_ecc_depth = max(self._current_max_ecc_depth, ecc_pct)
+            # Raw angle; EMA lags. Use phase_before so the transition frame still counts (e.g. ECCENTRIC→BOTTOM).
+            if phase_before in (CurlPhase.CONCENTRIC, CurlPhase.TOP):
+                self._current_max_conc_depth = max(self._current_max_conc_depth, conc_pct_track)
+            if phase_before == CurlPhase.ECCENTRIC:
+                self._current_max_ecc_depth = max(self._current_max_ecc_depth, ecc_pct_track)
             if torso_ok and torso_ang is not None:
                 self._current_max_lean = max(self._current_max_lean, torso_ang)
 

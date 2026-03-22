@@ -20,7 +20,7 @@ class PullUpPhase(Enum):
 
 @dataclass
 class PullUpConfig:
-    extended_angle_min_deg: float = 145.0    # Angle of a proper dead-hang
+    extended_angle_min_deg: float = 140.0    # Angle of a proper dead-hang (2D pose–friendly)
     flexed_angle_max_deg: float = 60.0       # Angle of a deep pull
 
     # --- CHEAT DETECTOR THRESHOLDS ---
@@ -218,9 +218,10 @@ class PullUpExercise(Exercise):
 
         conc_pct = self._depth_percent(sm, is_eccentric=False)
         ecc_pct = self._depth_percent(sm, is_eccentric=True)
+        conc_pct_track = self._depth_percent(ang, is_eccentric=False)
 
         if self._phase in (PullUpPhase.PULLING, PullUpPhase.TOP):
-            self._current_max_conc_depth = max(self._current_max_conc_depth, conc_pct)
+            self._current_max_conc_depth = max(self._current_max_conc_depth, conc_pct_track)
 
         metrics: Dict[str, Any] = {
             "visible": True,

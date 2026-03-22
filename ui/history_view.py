@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import tkinter as tk
+from tkinter import messagebox
 from collections import defaultdict
 from datetime import datetime
 from typing import Any, DefaultDict, Dict, List
@@ -20,6 +21,28 @@ def load_history() -> List[Dict[str, Any]]:
         return data if isinstance(data, list) else []
     except (json.JSONDecodeError, OSError):
         return []
+
+
+def entry_key(e: Dict[str, Any]) -> str:
+    eid = e.get("id")
+    if isinstance(eid, str) and eid.strip():
+        return eid.strip()
+    ts = e.get("timestamp", "")
+    ex = e.get("exercise", "")
+    return f"{ts}|{ex}"
+
+
+def delete_history_entry(key: str) -> bool:
+    hist = load_history()
+    new = [e for e in hist if entry_key(e) != key]
+    if len(new) == len(hist):
+        return False
+    try:
+        with open(HISTORY_JSON, "w", encoding="utf-8") as f:
+            json.dump(new, f, indent=4)
+    except OSError:
+        return False
+    return True
 
 
 def group_by_day(entries: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
@@ -143,8 +166,11 @@ class HistoryView(tk.Frame):
                 row = tk.Frame(day_frame, bg=theme.CARD_WHITE, highlightthickness=0, bd=0)
                 row.pack(fill=tk.X, padx=12, pady=(0, 8))
 
+                left = tk.Frame(row, bg=theme.CARD_WHITE, highlightthickness=0, bd=0)
+                left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
                 tk.Label(
-                    row,
+                    left,
                     text=line,
                     font=theme.FONT_BODY,
                     fg=theme.TEXT_PRIMARY,
@@ -153,15 +179,39 @@ class HistoryView(tk.Frame):
                 ).pack(anchor="w", padx=8)
                 if detail:
                     tk.Label(
-                        row,
+                        left,
                         text=detail,
                         font=theme.FONT_SMALL,
                         fg=theme.TEXT_MUTED,
                         bg=theme.CARD_WHITE,
                         anchor="w",
-                    ).pack(anchor="w", padx=8, pady=(2, 8))
+                    ).pack(anchor="w", padx=8, pady=(2, 0))
                 else:
-                    tk.Frame(row, height=8, bg=theme.CARD_WHITE).pack()
+                    tk.Frame(left, height=4, bg=theme.CARD_WHITE).pack()
+
+                ek = entry_key(sess)
+
+                def _on_delete(k: str = ek) -> None:
+                    if not messagebox.askyesno(
+                        "Delete workout?",
+                        "Remove this session from history? This cannot be undone.",
+                        icon="warning",
+                        parent=self.winfo_toplevel(),
+                    ):
+                        return
+                    if delete_history_entry(k):
+                        self.refresh()
+
+                del_btn = tk.Label(
+                    row,
+                    text="Delete",
+                    font=theme.FONT_SMALL,
+                    fg=theme.ACCENT_NAV_ACTIVE,
+                    bg=theme.CARD_WHITE,
+                    cursor="hand2",
+                )
+                del_btn.pack(side=tk.RIGHT, padx=(4, 8), pady=4, anchor="ne")
+                del_btn.bind("<Button-1>", lambda _e, fn=_on_delete: fn())
 
             tk.Frame(day_frame, height=8, bg=theme.CARD_WHITE).pack()
             day_rp.after_idle(day_rp.fit_hug)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 import tkinter as tk
 from tkinter import messagebox
 from tkinter import ttk
@@ -53,7 +54,9 @@ def save_log(entry: Dict[str, Any]) -> None:
             history = []
     if not isinstance(history, list):
         history = []
-    history.append(entry)
+    to_save = dict(entry)
+    to_save.setdefault("id", str(uuid.uuid4()))
+    history.append(to_save)
     try:
         with open(HISTORY_JSON, "w", encoding="utf-8") as f:
             json.dump(history, f, indent=4)
@@ -204,9 +207,15 @@ class FormLogicApp:
         self._recording.pack(fill=tk.BOTH, expand=True)
 
     def _on_session_finished(self, log_entry: Dict[str, Any]) -> None:
-        save_log(log_entry)
         self._recording = None
         self._nav.pack(side=tk.BOTTOM, fill=tk.X, pady=(0, 20))
+        if messagebox.askyesno(
+            "Save workout?",
+            "Save this session to your history?\n\nChoose No to discard it.",
+            icon="question",
+            parent=self.root,
+        ):
+            save_log(log_entry)
         self._show_tab("home")
         self._history.refresh()
 
