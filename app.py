@@ -295,12 +295,96 @@ class FormLogicApp:
                     icon="question",
                     parent=self.root,
                 ):
-                    save_log(log_entry)
+                    self._ask_session_date(log_entry)
             self._nav.set_active("home")
             self._show_tab("home")
             self._history.refresh()
 
         self._present_session_summary(log_entry, on_done=_after_summary)
+
+    def _ask_session_date(self, log_entry: Dict[str, Any]) -> None:
+        from datetime import datetime
+
+        dlg = tk.Toplevel(self.root)
+        dlg.title("Set Date")
+        dlg.resizable(False, False)
+        dlg.transient(self.root)
+        dlg.grab_set()
+
+        f = tk.Frame(dlg, bg=theme.CARD_WHITE, padx=24, pady=20)
+        f.pack(fill=tk.BOTH, expand=True)
+
+        tk.Label(
+            f, text="What date was this set performed?",
+            font=theme.FONT_SUB, fg=theme.TEXT_PRIMARY, bg=theme.CARD_WHITE,
+        ).pack(anchor="w", pady=(0, 10))
+
+        row = tk.Frame(f, bg=theme.CARD_WHITE)
+        row.pack(fill=tk.X)
+
+        date_var = tk.StringVar(value=datetime.now().strftime("%m/%d/%Y"))
+        tk.Entry(
+            row, textvariable=date_var, font=theme.FONT_BODY,
+            width=14, relief="solid", bd=1,
+            highlightthickness=1, highlightbackground=theme.CARD_BORDER,
+            highlightcolor=theme.ACCENT_NAV_ACTIVE,
+        ).pack(side=tk.LEFT, ipady=3)
+
+        tk.Label(
+            row, text="(MM/DD/YYYY)", font=theme.FONT_SMALL,
+            fg=theme.TEXT_MUTED, bg=theme.CARD_WHITE,
+        ).pack(side=tk.LEFT, padx=(8, 0))
+
+        err = tk.Label(f, text="", font=("Helvetica", 10), fg="#DC2626", bg=theme.CARD_WHITE)
+        err.pack(anchor="w", pady=(4, 0))
+
+        btn_row = tk.Frame(f, bg=theme.CARD_WHITE)
+        btn_row.pack(fill=tk.X, pady=(14, 0))
+
+        def _save() -> None:
+            ds = date_var.get().strip()
+            ts = None
+            if ds:
+                for fmt in ("%m/%d/%Y", "%Y-%m-%d", "%m-%d-%Y", "%m/%d/%y"):
+                    try:
+                        dt = datetime.strptime(ds, fmt)
+                        ts = dt.strftime("%Y-%m-%d %H:%M:%S")
+                        break
+                    except ValueError:
+                        continue
+                if ts is None:
+                    err.config(text="Invalid date. Use MM/DD/YYYY.")
+                    return
+            if ts:
+                log_entry["timestamp"] = ts
+            save_log(log_entry)
+            dlg.destroy()
+
+        def _use_today() -> None:
+            save_log(log_entry)
+            dlg.destroy()
+
+        tk.Button(
+            btn_row, text="Save with date", font=theme.FONT_CTA,
+            command=_save, relief="flat", cursor="hand2",
+            bg=theme.ACCENT_NAV_ACTIVE, fg="#FFFFFF",
+            activebackground="#6D28D9", activeforeground="#FFFFFF",
+            padx=16, pady=6,
+        ).pack(side=tk.LEFT)
+
+        tk.Button(
+            btn_row, text="Use today", font=theme.FONT_SUB,
+            command=_use_today, relief="flat", cursor="hand2",
+            bg=theme.CARD_BORDER, fg=theme.TEXT_PRIMARY,
+            activebackground="#D1D5DB", activeforeground=theme.TEXT_PRIMARY,
+            padx=16, pady=6,
+        ).pack(side=tk.LEFT, padx=(10, 0))
+
+        dlg.update_idletasks()
+        x = self.root.winfo_x() + (self.root.winfo_width() - dlg.winfo_reqwidth()) // 2
+        y = self.root.winfo_y() + (self.root.winfo_height() - dlg.winfo_reqheight()) // 2
+        dlg.geometry(f"+{x}+{y}")
+        dlg.wait_window()
 
 
 def main() -> None:

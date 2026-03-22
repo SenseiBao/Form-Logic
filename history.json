@@ -14,5 +14,21 @@
         "count_mode": false,
         "target_reps": 4,
         "id": "bc5166ae-05b9-446f-a2b8-790c00d8465a"
+    },
+    {
+        "timestamp": "2026-03-22 04:13:15",
+        "exercise": "bicep_curl",
+        "exercise_display": "BICEP CURL",
+        "metrics": {
+            "total_reps": 1,
+            "avg_rep_duration_s": 0.7,
+            "avg_conc_depth_pct": 100.0,
+            "avg_ecc_depth_pct": 88.7,
+            "avg_max_lean_deg": 8.6,
+            "pct_reps_full_extension": 0.0
+        },
+        "count_mode": false,
+        "target_reps": 4,
+        "id": "e7c711a9-f88f-4ad3-a30a-aee0a0410f29"
     }
 ]

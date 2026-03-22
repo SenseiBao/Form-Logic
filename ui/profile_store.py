@@ -40,10 +40,10 @@ def load_weight_log() -> List[Dict[str, Any]]:
         return []
 
 
-def log_weight(weight_kg: float) -> None:
+def log_weight(weight_kg: float, *, timestamp: Optional[str] = None) -> None:
     entries = load_weight_log()
     entries.append({
-        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "timestamp": timestamp or datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         "weight_kg": weight_kg,
     })
     try:

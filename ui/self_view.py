@@ -347,8 +347,9 @@ class SelfView(tk.Frame):
         # Quick-log row
         log_row = tk.Frame(parent, bg=theme.CARD_WHITE)
         log_row.pack(fill=tk.X, pady=(0, 10))
+
         tk.Label(
-            log_row, text="Log today's weight (lbs):",
+            log_row, text="Weight (lbs):",
             font=theme.FONT_SMALL, fg=theme.TEXT_PRIMARY, bg=theme.CARD_WHITE, anchor="w",
         ).pack(side=tk.LEFT)
         wt_var = tk.StringVar()
@@ -357,26 +358,60 @@ class SelfView(tk.Frame):
             cur = kg_to_lbs(profile.weight_kg)
             if cur is not None:
                 wt_var.set(str(cur))
-        wt_entry = tk.Entry(
+        tk.Entry(
             log_row, textvariable=wt_var, font=theme.FONT_SMALL,
-            width=8, relief="solid", bd=1,
+            width=7, relief="solid", bd=1,
             highlightthickness=1, highlightbackground=theme.CARD_BORDER,
             highlightcolor=theme.ACCENT_NAV_ACTIVE,
+        ).pack(side=tk.LEFT, padx=(6, 10), ipady=2)
+
+        tk.Label(
+            log_row, text="Date:",
+            font=theme.FONT_SMALL, fg=theme.TEXT_PRIMARY, bg=theme.CARD_WHITE, anchor="w",
+        ).pack(side=tk.LEFT)
+        date_var = tk.StringVar(value=datetime.now().strftime("%m/%d/%Y"))
+        tk.Entry(
+            log_row, textvariable=date_var, font=theme.FONT_SMALL,
+            width=10, relief="solid", bd=1,
+            highlightthickness=1, highlightbackground=theme.CARD_BORDER,
+            highlightcolor=theme.ACCENT_NAV_ACTIVE,
+        ).pack(side=tk.LEFT, padx=(6, 10), ipady=2)
+
+        log_err = tk.Label(
+            parent, text="", font=("Helvetica", 10), fg="#DC2626",
+            bg=theme.CARD_WHITE, anchor="w",
         )
-        wt_entry.pack(side=tk.LEFT, padx=(8, 6), ipady=2)
+        log_err.pack(fill=tk.X)
 
         def _do_log() -> None:
+            log_err.config(text="")
             s = wt_var.get().strip()
             if not s:
                 return
             try:
                 lbs = float(s.replace(",", "."))
             except ValueError:
+                log_err.config(text="Enter a valid weight number.")
                 return
+
+            ds = date_var.get().strip()
+            ts: Optional[str] = None
+            if ds:
+                for fmt in ("%m/%d/%Y", "%Y-%m-%d", "%m-%d-%Y", "%m/%d/%y"):
+                    try:
+                        dt = datetime.strptime(ds, fmt)
+                        ts = dt.strftime("%Y-%m-%d") + " 12:00:00"
+                        break
+                    except ValueError:
+                        continue
+                if ts is None:
+                    log_err.config(text="Invalid date. Use MM/DD/YYYY.")
+                    return
+
             from lift_tracker.profile import lbs_to_kg
             kg = lbs_to_kg(lbs)
             if kg is not None and kg > 0:
-                log_weight(kg)
+                log_weight(kg, timestamp=ts)
                 self._repopulate_weight()
 
         tk.Button(
@@ -401,14 +436,20 @@ class SelfView(tk.Frame):
             self._weight_tip_labels.append(lbl)
             return
 
-        # Chart (needs >= 2 distinct days)
-        self._build_weight_chart(parent, entries)
+        has_chart = self._has_chart_data(entries)
+
+        # Two-column row: table on left, chart on right
+        columns = tk.Frame(parent, bg=theme.CARD_WHITE)
+        columns.pack(fill=tk.BOTH, expand=True, pady=(0, 4))
+
+        left = tk.Frame(columns, bg=theme.CARD_WHITE)
+        left.pack(side=tk.LEFT, fill=tk.BOTH, expand=not has_chart)
 
         # Header row
-        hdr = tk.Frame(parent, bg=theme.CARD_WHITE)
+        hdr = tk.Frame(left, bg=theme.CARD_WHITE)
         hdr.pack(fill=tk.X, pady=(0, 2))
         tk.Label(hdr, text="Date", font=theme.FONT_SUB, fg=theme.TEXT_MUTED,
-                 bg=theme.CARD_WHITE, width=18, anchor="w").pack(side=tk.LEFT)
+                 bg=theme.CARD_WHITE, width=14, anchor="w").pack(side=tk.LEFT)
         tk.Label(hdr, text="Weight", font=theme.FONT_SUB, fg=theme.TEXT_MUTED,
                  bg=theme.CARD_WHITE, anchor="w").pack(side=tk.LEFT)
 
@@ -420,12 +461,19 @@ class SelfView(tk.Frame):
             except Exception:
                 date_str = ts_str[:10]
             weight_lbs = entry.get("weight_kg", 0.0) * 2.20462
-            row = tk.Frame(parent, bg=theme.CARD_WHITE)
+            row = tk.Frame(left, bg=theme.CARD_WHITE)
             row.pack(fill=tk.X, pady=1)
             tk.Label(row, text=date_str, font=theme.FONT_SMALL, fg=theme.TEXT_PRIMARY,
-                     bg=theme.CARD_WHITE, width=18, anchor="w").pack(side=tk.LEFT)
+                     bg=theme.CARD_WHITE, width=14, anchor="w").pack(side=tk.LEFT)
             tk.Label(row, text=f"{weight_lbs:.1f} lbs", font=theme.FONT_SMALL,
                      fg=theme.TEXT_PRIMARY, bg=theme.CARD_WHITE, anchor="w").pack(side=tk.LEFT)
+
+        if has_chart:
+            sep = tk.Frame(columns, bg=theme.CARD_BORDER, width=1)
+            sep.pack(side=tk.LEFT, fill=tk.Y, padx=(12, 12))
+            right = tk.Frame(columns, bg=theme.CARD_WHITE)
+            right.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            self._build_weight_chart(right, entries)
 
         tips = _weight_feedback(entries, goal)
         if tips:
@@ -441,14 +489,38 @@ class SelfView(tk.Frame):
                     font=theme.FONT_SMALL,
                     fg=theme.TEXT_PRIMARY,
                     bg=theme.CARD_WHITE,
-                    wraplength=440,
                     justify="left",
                     anchor="nw",
                 )
                 lbl.pack(side=tk.LEFT, fill=tk.X, expand=True, anchor="nw")
                 self._weight_tip_labels.append(lbl)
 
+        _last_parent_w: list = [0]
+
+        def _sync_tip_wrap(_evt: object = None) -> None:
+            try:
+                pw = max(1, parent.winfo_width())
+            except tk.TclError:
+                return
+            if pw == _last_parent_w[0]:
+                return
+            _last_parent_w[0] = pw
+            wrap = max(200, pw - 40)
+            for tl in self._weight_tip_labels:
+                try:
+                    tl.configure(wraplength=wrap)
+                except tk.TclError:
+                    pass
+
+        parent.bind("<Configure>", _sync_tip_wrap)
+        parent.after_idle(lambda: _sync_tip_wrap(None))
+
     # ── Weight chart ──────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _has_chart_data(entries: List[Dict[str, Any]]) -> bool:
+        days = {e.get("timestamp", "")[:10] for e in entries}
+        return len(days) >= 2
 
     def _build_weight_chart(
         self, parent: tk.Frame, entries: List[Dict[str, Any]]
@@ -466,8 +538,8 @@ class SelfView(tk.Frame):
         if len(days) < 2:
             return
 
-        CHART_H = 160
-        PAD_L, PAD_R, PAD_T, PAD_B = 52, 16, 14, 28
+        CHART_H = 190
+        PAD_L, PAD_R, PAD_T, PAD_B = 44, 12, 24, 28
         FILL_COLOR = "#EDE9FE"
         LINE_COLOR = theme.ACCENT_PURPLE
         DOT_R = 3.5
@@ -481,7 +553,7 @@ class SelfView(tk.Frame):
             parent, height=CHART_H, bg=theme.CARD_WHITE,
             highlightthickness=0, bd=0,
         )
-        canvas.pack(fill=tk.X, pady=(0, 10))
+        canvas.pack(fill=tk.BOTH, expand=True, pady=(0, 4))
 
         min_w = min(weights) - 1
         max_w = max(weights) + 1
@@ -491,9 +563,10 @@ class SelfView(tk.Frame):
 
         def _draw(_evt: object = None) -> None:
             canvas.delete("all")
-            cw = max(200, canvas.winfo_width())
+            cw = max(120, canvas.winfo_width())
+            ch = max(80, canvas.winfo_height())
             plot_w = cw - PAD_L - PAD_R
-            plot_h = CHART_H - PAD_T - PAD_B
+            plot_h = ch - PAD_T - PAD_B
 
             def _px(i: int, w: float) -> tuple:
                 x = PAD_L + (i / max(1, len(days) - 1)) * plot_w
@@ -535,7 +608,7 @@ class SelfView(tk.Frame):
                     fill=LINE_COLOR, outline=theme.CARD_WHITE, width=1.5,
                 )
 
-            max_labels = min(6, len(days))
+            max_labels = min(5, len(days))
             step = max(1, (len(days) - 1) // (max_labels - 1)) if max_labels > 1 else 1
             label_indices = list(range(0, len(days), step))
             if (len(days) - 1) not in label_indices:
@@ -547,17 +620,17 @@ class SelfView(tk.Frame):
                 except ValueError:
                     dl = days[i]
                 canvas.create_text(
-                    x, CHART_H - 4, text=dl, anchor="s",
+                    x, ch - 4, text=dl, anchor="s",
                     font=("Helvetica", 9), fill=theme.TEXT_MUTED,
                 )
 
-        _last_cw: list = [0]
+        _last_size: list = [(0, 0)]
 
         def _on_cfg(_evt: object = None) -> None:
-            cw = canvas.winfo_width()
-            if cw == _last_cw[0]:
+            sz = (canvas.winfo_width(), canvas.winfo_height())
+            if sz == _last_size[0]:
                 return
-            _last_cw[0] = cw
+            _last_size[0] = sz
             _draw()
 
         canvas.bind("<Configure>", _on_cfg)
