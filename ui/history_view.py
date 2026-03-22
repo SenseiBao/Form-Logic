@@ -128,6 +128,16 @@ class HistoryView(tk.Frame):
                 time_part = ts_full[11:] if len(ts_full) > 11 else ts_full
                 metrics = sess.get("metrics") if isinstance(sess.get("metrics"), dict) else {}
                 line = f"{time_part} — {ex.replace('_', ' ').title()}"
+                lw = sess.get("lift_weight_lbs")
+                if lw is not None:
+                    try:
+                        wv = float(lw)
+                        if wv == int(wv):
+                            line += f" · {int(wv)} lb"
+                        else:
+                            line += f" · {wv:g} lb"
+                    except (TypeError, ValueError):
+                        pass
                 detail = _fmt_metrics(metrics)
 
                 row = tk.Frame(day_frame, bg=theme.CARD_WHITE, highlightthickness=0, bd=0)

@@ -8,7 +8,7 @@ from PIL import ImageTk
 from ui import theme
 
 
-TabId = Literal["home", "history", "self"]
+TabId = Literal["home", "history", "self", "settings"]
 
 
 def _parent_bg(parent: tk.Misc, fallback: str) -> str:
@@ -175,7 +175,7 @@ class PillButton(tk.Canvas):
 
 
 class GradientPillButton(tk.Canvas):
-    """Primary CTA with soft blue→peach gradient (optional accent)."""
+    """Primary CTA with purple gradient (Begin / main actions)."""
 
     def __init__(
         self,
@@ -210,7 +210,7 @@ class GradientPillButton(tk.Canvas):
     def _draw(self) -> None:
         self.delete("all")
         r = self._pill_h // 2
-        img = theme.gradient_cta_rgba(self._pill_w, self._pill_h, r, hover=self._hover)
+        img = theme.begin_button_gradient_rgba(self._pill_w, self._pill_h, r, hover=self._hover)
         self._photo = ImageTk.PhotoImage(img, master=self)
         self.create_image(self._pill_w // 2, self._pill_h // 2, image=self._photo)
         self.create_text(
@@ -255,7 +255,12 @@ class BottomNav(tk.Frame):
 
         self._btns: dict[TabId, tk.Label] = {}
 
-        for tid, label in [("home", "Home"), ("history", "History"), ("self", "Self")]:
+        for tid, label in [
+            ("home", "Home"),
+            ("history", "History"),
+            ("self", "Self"),
+            ("settings", "Settings"),
+        ]:
             lbl = tk.Label(
                 row,
                 text=label,
@@ -263,7 +268,7 @@ class BottomNav(tk.Frame):
                 fg=theme.ACCENT_NAV_ACTIVE if tid == "home" else theme.TEXT_MUTED,
                 bg=theme.CARD_WHITE,
                 cursor="hand2",
-                padx=32,
+                padx=18,
                 pady=4,
             )
             lbl.pack(side=tk.LEFT, expand=True)

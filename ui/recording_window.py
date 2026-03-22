@@ -160,6 +160,7 @@ class RecordingSession(tk.Frame):
         exercise_display: str,
         target_reps: int,
         on_finished: LogCallback,
+        lift_weight_lbs: Optional[float] = None,
         min_w: int = 960,
         min_h: int = 620,
     ) -> None:
@@ -168,6 +169,7 @@ class RecordingSession(tk.Frame):
         self._exercise_module = exercise_module
         self._exercise_display = exercise_display.upper()
         self._target_reps = max(1, int(target_reps))
+        self._lift_weight_lbs = lift_weight_lbs
         self._on_finished = on_finished
 
         self._root = self.winfo_toplevel()
@@ -786,11 +788,13 @@ class RecordingSession(tk.Frame):
 
         summary = self._exercise_module.get_summary()
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        log_entry = {
+        log_entry: Dict[str, Any] = {
             "timestamp": timestamp,
             "exercise": self._exercise_module.id,
             "metrics": summary,
         }
+        if self._lift_weight_lbs is not None:
+            log_entry["lift_weight_lbs"] = float(self._lift_weight_lbs)
         self._restore_root_chrome()
         self._on_finished(log_entry)
 
